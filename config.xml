@@ -40,6 +40,10 @@
   <preference name="android-usesCleartextTraffic" value="true" />  <!-- 允许明文 HTTP，局域网管理端 :8090 -->
   <preference name="deployment-target" value="13.0" />             <!-- iOS 最低版本（避免 Xcode 26 部署目标警告） -->
 
+  <!-- 构建钩子：自动修补 barcodescanner iOS 源码（Xcode 26 类型错误），幂等 -->
+  <hook type="after_platform_add" src="hooks/fix-barcodescanner-ios.js" />
+  <hook type="before_compile" src="hooks/fix-barcodescanner-ios.js" />
+
   <!-- 插件声明（cordova prepare/build 时自动安装） -->
   <plugin name="cordova-plugin-geolocation" spec="^5.0.0" />
   <plugin name="cordova-plugin-dialogs" spec="^2.0.2" />
