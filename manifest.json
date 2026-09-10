@@ -1,0 +1,25 @@
+{
+  "name": "囚犯打卡系统",
+  "short_name": "打卡",
+  "description": "囚犯打卡系统：囚号密码登录、离线打卡（拍照 + 定位省市区街道）、囚犯信息、局域网自动同步",
+  "start_url": "./login.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a2b5c",
+  "theme_color": "#1a2b5c",
+  "icons": [
+    {
+      "src": "./icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
