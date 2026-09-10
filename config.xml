@@ -1,0 +1,119 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- 电子点名管理系统 用户端 - Cordova 工程配置（config.xml）
+  打包目标：安卓 APK（cordova build android）
+  已配置插件：
+    cordova-plugin-geolocation    定位（经纬度 + 逆地理解析）
+    cordova-plugin-bluetooth-serial 蓝牙串口（保留，v6 同步走局域网 HTTP）
+    cordova-plugin-dialogs        原生对话框（alert/confirm）
+    cordova-plugin-file           本地文件能力（离线照片缓存备用）
+    cordova-plugin-whitelist      网络白名单（允许访问局域网 HTTP）
+    cordova-plugin-qrscanner      扫码连接（连接管理端二维码）
+  离线本地存储：WebView 内置 localStorage（离线打卡队列 / 去重集合）
+  局域网通信：fetch 管理端 http://IP:8090（需允许明文流量，见 android-usesCleartextTraffic） -->
+<widget id="com.checkin.user" version="6.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0" xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <name>电子点名</name>
+  <description>电子点名管理系统用户端：扫码连接 + 离线打卡（定位照片）+ 自动同步</description>
+  <author email="admin@checkin.local">打卡系统</author>
+
+  <!-- 入口页面：index.html 会自动跳转到 login.html -->
+  <content src="index.html" />
+
+  <!-- 应用图标（基于用户提供的系统徽章生成；cordova prepare 时按密度映射） -->
+  <icon src="www/icon-512.png" width="512" height="512" density="xxxhdpi" />
+  <icon src="www/icon-192.png" width="192" height="192" density="xxhdpi" />
+  <icon src="www/icon-192.png" width="144" height="144" density="xhdpi" />
+  <icon src="www/icon-192.png" width="96" height="96" density="hdpi" />
+  <icon src="www/icon-192.png" width="72" height="72" density="mdpi" />
+
+  <!-- 网络白名单：允许访问任意 http/https（局域网管理端地址） -->
+  <access origin="*" />
+  <allow-intent href="http://*/*" />
+  <allow-intent href="https://*/*" />
+
+  <!-- 应用偏好 -->
+  <preference name="Orientation" value="portrait" />          <!-- 竖屏 -->
+  <preference name="android-minSdkVersion" value="24" />      <!-- Android 7.0+ -->
+  <preference name="android-targetSdkVersion" value="34" />
+  <preference name="AndroidPersistentFileLocation" value="Internal" />
+  <preference name="BackgroundColor" value="#0d1f45" />
+  <preference name="android-usesCleartextTraffic" value="true" />  <!-- 允许明文 HTTP，局域网管理端 :8090 -->
+
+  <!-- 插件声明（cordova prepare/build 时自动安装） -->
+  <plugin name="cordova-plugin-geolocation" spec="^5.0.0" />
+  <plugin name="cordova-plugin-dialogs" spec="^2.0.2" />
+  <plugin name="cordova-plugin-file" spec="^8.1.2" />
+  <plugin name="cordova-plugin-whitelist" spec="^1.3.5" />
+  <plugin name="cordova-plugin-camera" spec="^8.0.0" />
+  <plugin name="cordova-plugin-qrscanner" spec="^3.0.1" />
+
+  <!-- 安卓平台专属配置 -->
+  <platform name="android">
+
+    <!-- 蓝牙串口仅安卓（iOS 不支持 SPP，已从全局插件声明移入本段） -->
+    <plugin name="cordova-plugin-bluetooth-serial" spec="^0.4.7" />
+
+    <!-- 权限：网络 / 定位 / 相机（扫码连接）/ 蓝牙 -->
+    <config-file target="app/src/main/AndroidManifest.xml" parent="/manifest">
+      <uses-permission android:name="android.permission.INTERNET" />
+      <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+      <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+      <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+      <uses-permission android:name="android.permission.BLUETOOTH" />
+      <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+      <!-- Android 12+ 蓝牙权限（打包目标 31+ 时需在系统设置中手动授权） -->
+      <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+      <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    </config-file>
+
+  </platform>
+
+  <!-- ================= iOS 平台专属配置 =================
+       打包：在 macOS 上 `cordova platform add ios@^7.0.0 && cordova build ios`，
+       或使用 Codemagic / AppFlow 云打包（见交付说明）。
+       复用 checkin_apk/www/ 全部前端代码，功能与安卓端一致。 -->
+  <platform name="ios">
+
+    <!-- 6.1 局域网明文 HTTP（ATS）：只放行本地网络，不使用 NSAllowsArbitraryLoads（App Store 审核更严） -->
+    <config-file target="*-Info.plist" parent="NSAppTransportSecurity">
+      <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+      </dict>
+    </config-file>
+
+    <!-- 6.2 权限用途描述（缺失会导致首次调用相机/相册/定位直接闪退） -->
+    <config-file target="*-Info.plist" parent="NSCameraUsageDescription">
+      <string>用于打卡拍照与扫码连接管理端</string>
+    </config-file>
+    <config-file target="*-Info.plist" parent="NSPhotoLibraryUsageDescription">
+      <string>用于选择打卡照片</string>
+    </config-file>
+    <config-file target="*-Info.plist" parent="NSLocationWhenInUseUsageDescription">
+      <string>用于打卡时获取当前位置</string>
+    </config-file>
+
+    <!-- iOS 图标（基于系统徽章生成，1024 主图标 + 各尺寸；App Store/TestFlight 需 1024 无透明通道） -->
+    <icon src="www/icon-1024.png" width="1024" height="1024" />
+    <icon src="www/icon-1024.png" width="180" height="180" />
+    <icon src="www/icon-1024.png" width="167" height="167" />
+    <icon src="www/icon-1024.png" width="152" height="152" />
+    <icon src="www/icon-1024.png" width="120" height="120" />
+    <icon src="www/icon-1024.png" width="87" height="87" />
+    <icon src="www/icon-1024.png" width="80" height="80" />
+    <icon src="www/icon-1024.png" width="76" height="76" />
+    <icon src="www/icon-1024.png" width="60" height="60" />
+    <icon src="www/icon-1024.png" width="58" height="58" />
+    <icon src="www/icon-1024.png" width="40" height="40" />
+    <icon src="www/icon-1024.png" width="29" height="29" />
+    <icon src="www/icon-1024.png" width="20" height="20" />
+
+    <preference name="Orientation" value="portrait" />
+    <preference name="BackgroundColor" value="#0d1f45" />
+    <preference name="WKWebViewOnly" value="true" />
+    <!-- iOS 13+ 深色模式统一为浅色，避免配色偏差 -->
+    <preference name="UIUserInterfaceStyle" value="Light" />
+    <preference name="CameraUsesGeolocation" value="false" />
+
+  </platform>
+</widget>

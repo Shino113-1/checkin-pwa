@@ -1,0 +1,49 @@
+{
+  "name": "checkin-user-apk",
+  "displayName": "电子点名",
+  "version": "6.0.0",
+  "description": "电子点名管理系统用户端 APK（Cordova）：扫码连接 + 离线打卡 + 自动同步",
+  "author": "打卡系统",
+  "license": "ISC",
+  "scripts": {
+    "build": "cordova build android",
+    "run": "cordova run android",
+    "platform-add": "cordova platform add android",
+    "build:ios": "cordova build ios --device",
+    "build:ios:unsigned": "cordova build ios --device --buildFlag=CODE_SIGNING_ALLOWED=NO --buildFlag=CODE_SIGNING_REQUIRED=NO",
+    "platform-add:ios": "cordova platform add ios@^7.0.0"
+  },
+  "dependencies": {
+    "cordova-plugin-bluetooth-serial": "^0.4.7",
+    "cordova-plugin-dialogs": "^2.0.2",
+    "cordova-plugin-file": "^8.1.2",
+    "cordova-plugin-geolocation": "^5.0.0",
+    "cordova-plugin-qrscanner": "^3.0.1",
+    "cordova-plugin-whitelist": "^1.3.5"
+  },
+  "cordova": {
+    "platforms": [
+      "android"
+    ],
+    "plugins": {
+      "cordova-plugin-bluetooth-serial": {},
+      "cordova-plugin-dialogs": {},
+      "cordova-plugin-file": {
+        "ANDROIDX_WEBKIT_VERSION": "1.4.0"
+      },
+      "cordova-plugin-geolocation": {
+        "GPS_REQUIRED": "true"
+      },
+      "cordova-plugin-qrscanner": {},
+      "cordova-plugin-whitelist": {},
+      "cordova-plugin-camera": {
+        "ANDROIDX_CORE_VERSION": "1.6.+"
+      }
+    }
+  },
+  "devDependencies": {
+    "cordova-android": "^12.0.1",
+    "cordova-ios": "^7.0.0",
+    "cordova-plugin-camera": "^8.0.0"
+  }
+}

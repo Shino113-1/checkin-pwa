@@ -1,0 +1,55 @@
+# ============================================================
+# Codemagic 构建配置：iOS 用户端（未签名 IPA，供免费安装）
+# ------------------------------------------------------------
+# 用法：
+#   1. 把本仓库推送到 GitHub（公开/私有均可）；
+#   2. 在 Codemagic (https://codemagic.io) 注册并关联该仓库；
+#   3. 选择本 workflow（ios-user-unsigned）触发构建；
+#   4. 构建成功后，在 Build 页面 Artifacts 下载 unsigned-checkin-user.ipa；
+#   5. Windows 上用 Sideloadly（免费）以免费 Apple ID 签名安装到 iPhone。
+#
+# 说明：
+#   - 免费计划每月 500 分钟 macOS 构建，足够本流程使用；
+#   - 本流程不配置 Apple 证书，产出未签名 ipa，再由本地免费签名；
+#   - 若构建报错，多为插件/版本兼容问题，按报错信息微调即可。
+# ============================================================
+workflows:
+  ios-user-unsigned:
+    name: iOS 用户端 - 未签名 IPA
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      node: 20
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: 安装 Cordova CLI 与项目依赖
+        script: |
+          npm install -g cordova@12
+          npm install
+      - name: 添加 iOS 平台
+        script: |
+          cordova platform add ios@^7.0.0
+      - name: 构建 iOS 应用（关闭代码签名）
+        script: |
+          cordova build ios --device \
+            --buildFlag="CODE_SIGNING_ALLOWED=NO" \
+            --buildFlag="CODE_SIGNING_REQUIRED=NO"
+      - name: 打包为未签名 ipa
+        script: |
+          cd platforms/ios/build/device
+          ls -la
+          mkdir -p Payload
+          cp -R "电子点名.app" Payload/
+          zip -qry unsigned-checkin-user.ipa Payload
+          cd -
+          ls -la platforms/ios/build/device/
+    artifacts:
+      - platforms/ios/build/device/*.ipa
+    publishing:
+      email:
+        recipients:
+          - you@example.com
+        notify:
+          success: false
+          failure: true

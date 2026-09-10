@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>电子点名管理系统 - 用户端</title>
+<script src="config.js"></script>
+<script>
+  /* 仅在 Cordova APP 环境（https://localhost）加载 cordova.js，
+     浏览器/PWA/管理端内页不加载，这样 navigator.camera 等原生插件才可用 */
+  (function () {
+    if (window.location.hostname === 'localhost') {
+      document.write('<script src="cordova.js"><\/script>');
+    }
+  })();
+</script>
+<style>
+/* ============================================================
+   电子点名管理系统 v6.0 · 用户端（user.html）
+   风格：公安深蓝 + 顶部深蓝横幅（标志+系统名）+ 上下黑白条纹
+   功能：扫码连接管理端 / 离线模式自动上传 / 打卡（定位+照片+
+         服务端60秒冷却）/ 囚犯信息 / 打卡历史
+   ============================================================ */
+:root{
+  --blue-deep:#0d2b52;
+  --blue-1:#1b4f8a;
+  --blue-2:#2c5f9e;
+  --bg:#f2f5f9;
+  --card:#ffffff;
+  --text:#333333;
+  --muted:#666666;
+  --border:#d9e2ec;
+  --red:#c0392b;
+  --red-2:#e74c3c;
+  --ok:#27ae60;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{
+  font-family:"Microsoft YaHei","PingFang SC","Source Han Sans SC","Segoe UI",Arial,sans-serif;
+  background:var(--bg);color:var(--text);min-height:100vh;
+  /* iOS 刘海屏/Home 条安全区适配 */
+  padding-top:env(safe-area-inset-top);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+/* ---- 顶部深蓝横幅（56px） ---- */
+.topbar{
+  height:56px;background:var(--blue-deep);color:#fff;
+  display:flex;align-items:center;justify-content:space-between;padding:0 16px;
+  position:sticky;top:0;z-index:900;
+}
+.topbar .brand{display:flex;align-items:center;font-size:16px;font-weight:700;letter-spacing:1px}
+.topbar .brand img{height:32px;width:32px;object-fit:cover;border-radius:50%;margin-right:8px;border:1px solid rgba(255,255,255,.55);background:#fff}
+.topbar .right{font-size:12px;color:#cfe0ff}
+/* ---- 黑白条纹（每段16px） ---- */
+.stripes{height:16px;background:repeating-linear-gradient(to bottom,#111 0 16px,#fff 16px 32px)}
+/* ---- 离线灰色提示条 ---- */
+.offline-bar{
+  display:none;background:#b9bec7;color:#fff;text-align:center;font-size:13px;
+  padding:8px 12px;line-height:1.6;
+}
+.offline-bar.show{display:block}
+/* ---- 主界面 ---- */
+main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
+.page{display:none}
+.page.active{display:block}
+.card{
+  background:var(--card);border:1px solid var(--border);border-radius:4px;
+  padding:18px;margin-bottom:14px;
+}
+.card h3{font-size:15px;color:var(--blue-deep);margin-bottom:10px;display:flex;align-items:center}
+.card h3::before{content:"";display:inline-block;width:4px;height:14px;background:var(--blue-deep);margin-right:7px}
+.card .muted{font-size:12px;color:var(--muted);line-height:1.9}
+
+/* ---- 扁平主按钮（无边框，两枚并排） ---- */
+.home-btns{display:flex;gap:14px;padding:6px 0 4px}
+.flat-btn{
+  flex:1;height:120px;border:none;border-radius:8px;cursor:pointer;
+  background:rgba(13,43,82,.92);color:#fff;font-size:18px;font-weight:700;
+  letter-spacing:4px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:10px;transition:background .2s,transform .1s;
+}
+.flat-btn .icon{font-size:30px;line-height:1}
+.flat-btn:active{transform:scale(.98)}
+.flat-btn.b1{background:rgba(13,43,82,.94)}
+.flat-btn.b1:hover{background:rgba(27,79,138,.94)}
+.small-entry{
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  margin-top:14px;padding:10px;border:none;background:transparent;
+  color:var(--muted);font-size:13px;cursor:pointer;
+}
+.small-entry:hover{color:var(--blue-deep)}
+.queue-pill{font-size:11px;background:var(--red);color:#fff;border-radius:10px;padding:1px 8px;margin-left:6px}
+
+/* ---- 打卡页 ---- */
+.checkin-head{text-align:center;margin:8px 0 16px}
+.checkin-head .clock{font-size:38px;font-weight:700;color:var(--blue-deep);letter-spacing:2px;font-variant-numeric:tabular-nums}
+.checkin-head .date{font-size:13px;color:var(--muted);margin-top:4px}
+.big-check-btn{
+  display:block;width:62%;max-width:360px;margin:10px auto 6px;
+  height:96px;border:none;border-radius:8px;cursor:pointer;
+  background:var(--red-2);color:#fff;font-size:22px;font-weight:700;letter-spacing:6px;
+  transition:background .2s,transform .1s;
+}
+.big-check-btn:active{transform:scale(.98)}
+.big-check-btn.done{background:var(--ok)}
+.big-check-btn.cooldown{background:#9aa5b5;cursor:not-allowed}
+.big-check-btn:disabled{cursor:not-allowed}
+.checkin-status{text-align:center;font-size:13px;color:var(--muted);min-height:20px;margin-bottom:10px}
+.checkin-status.err{color:var(--red)}
+.checkin-status.ok{color:var(--ok)}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-top:6px}
+.info-grid .item .k{font-size:12px;color:var(--muted)}
+.info-grid .item .v{font-size:14px;color:var(--text);font-weight:600;margin-top:2px;word-break:break-all}
+.profile-top{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.profile-top img{width:84px;height:84px;border-radius:50%;object-fit:cover;border:1px solid var(--border);background:var(--bg)}
+.profile-top .who .name{font-size:20px;font-weight:700;color:var(--blue-deep)}
+.profile-top .who .sub{font-size:13px;color:var(--muted);margin-top:4px}
+
+/* ---- 历史 ---- */
+.hist-item{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);align-items:flex-start}
+.hist-item:last-child{border-bottom:none}
+.hist-item img{width:86px;height:64px;object-fit:cover;border-radius:3px;border:1px solid var(--border);background:var(--bg);flex-shrink:0}
+.hist-item .meta{flex:1;font-size:12px;color:var(--muted);line-height:1.9}
+.hist-item .meta .t{font-size:13px;color:var(--text);font-weight:600}
+.hist-item .meta .addr{color:var(--muted)}
+.status-badge{display:inline-block;padding:1px 8px;border-radius:2px;font-size:11px}
+.status-synced{background:#ecfdf3;color:#157a32;border:1px solid #b7e4c7}
+.status-local{background:#fff7e6;color:#9a6700;border:1px solid #f3d9a4}
+
+/* ---- 连接设置 ---- */
+.set-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}
+.set-row input{
+  flex:1;min-width:200px;height:40px;padding:0 10px;border:1px solid #c3d0e0;
+  border-radius:4px;font-size:14px;outline:none;background:#fff;
+}
+.set-row input:focus{border-color:var(--blue-deep)}
+.btn{
+  border:none;border-radius:4px;cursor:pointer;font-size:14px;font-weight:600;
+  padding:10px 18px;letter-spacing:1px;background:var(--blue-deep);color:#fff;
+  transition:background .2s;
+}
+.btn:hover{background:var(--blue-1)}
+.btn.secondary{background:#fff;color:var(--blue-deep);border:1px solid var(--blue-deep)}
+.btn.ghost{background:#fff;color:var(--muted);border:1px solid #c3d0e0}
+.btn:disabled{background:#7c8fb0;cursor:not-allowed}
+.sync-log{
+  background:#0d1b3a;color:#cfe0ff;border-radius:4px;padding:10px 12px;font-size:12px;
+  line-height:1.8;max-height:200px;overflow-y:auto;font-family:Consolas,monospace;
+  white-space:pre-wrap;word-break:break-all;margin-top:10px;
+}
+.sync-log .ok{color:#7ee2a8}.sync-log .err{color:#ff9d94}.sync-log .t{color:#8fb3ff}
+.pill{display:inline-block;padding:3px 12px;border-radius:2px;font-size:12px;border:1px solid var(--border);background:#fff}
+.pill.ok{background:#ecfdf3;color:#157a32;border-color:#b7e4c7}
+.pill.err{background:#fef2f2;color:#b42318;border-color:#f3c1be}
+.back-bar{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.back-bar .back{
+  border:1px solid var(--border);background:#fff;border-radius:4px;padding:6px 14px;
+  font-size:13px;color:var(--blue-deep);cursor:pointer;
+}
+.back-bar .title{font-size:15px;font-weight:700;color:var(--blue-deep)}
+.foot{height:calc(16px + env(safe-area-inset-bottom));background:var(--blue-deep)}
+/* 打卡类型选择弹窗 */
+.ck-modal{display:none;position:fixed;inset:0;z-index:200;background:rgba(10,20,45,.62);align-items:center;justify-content:center}
+.ck-modal.show{display:flex}
+.ck-modal-box{width:78%;max-width:340px;background:#fff;border-radius:10px;padding:22px 18px 18px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+.ck-modal-title{font-size:16px;font-weight:700;color:var(--blue-deep);margin-bottom:18px}
+.ck-opt-btn{display:block;width:100%;padding:13px 0;margin-bottom:10px;border:none;border-radius:6px;
+  font-size:15px;font-weight:700;color:#fff;background:linear-gradient(135deg,#1d4f91,#2c6fd0);cursor:pointer}
+.ck-opt-btn:active{opacity:.85}
+.ck-opt-cancel{display:block;width:100%;padding:10px 0;border:1px solid var(--border);border-radius:6px;
+  font-size:13px;color:#666;background:#f7f9fc;cursor:pointer}
+.status-study{background:#fffbe6;color:#C77700;border:1px solid #f5d78e;font-weight:700}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <img src="logo.jpg" alt="系统标志">
+    <span>电子点名管理系统</span>
+  </div>
+  <div class="right" id="topTime">--</div>
+</header>
+<div class="stripes"></div>
+<div class="offline-bar" id="offlineBar">⚠ 离线模式：打卡数据将保存在本机，联网后自动上传</div>
+
+<main>
+  <!-- ============ 首页：罪犯信息 + 打卡主入口 ============ -->
+  <section class="page active" id="pageHome">
+    <div class="card">
+      <h3>罪犯信息</h3>
+      <div class="profile-top">
+        <img id="pfAvatar" src="logo.jpg" alt="头像">
+        <div class="who">
+          <div class="name" id="pfName">--</div>
+          <div class="sub">囚号：<span id="pfUsername">--</span></div>
+        </div>
+      </div>
+      <div class="info-grid">
+        <div class="item"><div class="k">待遇</div><div class="v" id="pfTreatment">--</div></div>
+        <div class="item"><div class="k">监区</div><div class="v" id="pfArea">--</div></div>
+        <div class="item"><div class="k">罪名</div><div class="v" id="pfCrime">--</div></div>
+      </div>
+    </div>
+    <div class="home-btns">
+      <button type="button" class="flat-btn b1" id="goCheckinBtn">
+        <span class="icon">◉</span>打 卡
+      </button>
+    </div>
+    <button type="button" class="small-entry" id="goHistoryBtn">▶ 我的打卡记录</button>
+    <button type="button" class="small-entry" id="goConnectBtn">⚙ 连接设置与同步</button>
+  </section>
+
+  <!-- ============ 打卡页（一键打卡） ============ -->
+  <section class="page" id="pageCheckin">
+    <div class="back-bar">
+      <button type="button" class="back" onclick="Page.go('home')">‹ 返回</button>
+      <span class="title">电子点名打卡</span>
+    </div>
+    <div class="checkin-head">
+      <div class="clock" id="ckClock">--:--:--</div>
+      <div class="date" id="ckDate">----</div>
+    </div>
+    <div class="card">
+      <button type="button" class="big-check-btn" id="checkBtn">打 卡</button>
+      <p class="checkin-status" id="checkStatus">点击「打卡」选择类型，自动获取定位并拍照</p>
+    </div>
+  </section>
+
+  <!-- 打卡类型选择弹窗 -->
+  <div class="ck-modal" id="checkinOptionModal">
+    <div class="ck-modal-box">
+      <div class="ck-modal-title">选择打卡类型</div>
+      <button type="button" class="ck-opt-btn" id="optStudyBtn">请求自慰</button>
+      <button type="button" class="ck-opt-btn" id="optNormalBtn">报告位置</button>
+      <button type="button" class="ck-opt-cancel" id="optCancelBtn">取消</button>
+    </div>
+  </div>
+
+  <!-- ============ 打卡历史页 ============ -->
+  <section class="page" id="pageHistory">
+    <div class="back-bar">
+      <button type="button" class="back" onclick="Page.go('home')">‹ 返回</button>
+      <span class="title">我的打卡记录</span>
+    </div>
+    <div class="card" id="historyCard"><p class="muted">加载中…</p></div>
+  </section>
+
+  <!-- ============ 连接设置页 ============ -->
+  <section class="page" id="pageConnect">
+    <div class="back-bar">
+      <button type="button" class="back" onclick="Page.go('home')">‹ 返回</button>
+      <span class="title">连接设置与同步</span>
+    </div>
+    <div class="card">
+      <h3>管理端连接</h3>
+      <div class="set-row">
+        <span class="pill" id="connPill">未连接</span>
+        <span style="font-size:12px;color:var(--muted)" id="connAddrText">尚未设置服务器</span>
+      </div>
+      <div class="set-row">
+        <input type="text" id="serverInput" placeholder="管理端地址，如 http://192.168.1.100:8090">
+        <button type="button" class="btn" id="saveServerBtn">保存</button>
+      </div>
+      <button type="button" class="btn secondary" id="scanBtn" style="width:100%">扫码连接（需在 APP 内使用）</button>
+      <p class="muted" style="font-size:12px;margin-top:8px">二维码在管理端「局域网连接与数据接收」页面显示；浏览器/PWA 端请手动输入地址，或用手机相机扫描二维码打开后自动配置。</p>
+    </div>
+    <div class="card">
+      <h3>同步</h3>
+      <div class="set-row" style="justify-content:space-between">
+        <span style="font-size:13px">待上传离线记录：<b id="queueCount">0</b> 条</span>
+        <div style="display:flex;gap:8px">
+          <button type="button" class="btn ghost" id="syncBtn">立即同步</button>
+          <button type="button" class="btn ghost" id="pullBtn">拉取最新资料</button>
+        </div>
+      </div>
+      <div class="sync-log" id="syncLog"></div>
+    </div>
+  </section>
+</main>
+
+<div class="foot"></div>
+
+<script>
+/* ============================================================
+   本地存储键（与 login.html / admin.html 一致）：
+   - checkin_session   : {username, role, token, expires, loginTime}
+   - checkin_profiles  : {囚号: {name, treatment, prisonArea, crime, avatar}}
+   - checkin_records   : 本地打卡记录（含已同步与离线队列）
+   - checkin_server    : 管理端地址（http://IP:8090）
+   - checkin_cooldown_<囚号> : 本地冷却时间戳
+   ============================================================ */
+(function () {
+  'use strict';
+
+  const LS = { session: 'checkin_session', profiles: 'checkin_profiles', records: 'checkin_records', server: 'checkin_server' };
+  const $ = id => document.getElementById(id);
+  let COOLDOWN_MS = 5 * 60 * 1000;   // 打卡冷却：默认 5 分钟（管理端可改，联网后以服务端配置为准）
+
+  /* ---------- 工具 ---------- */
+  function getSession() { try { return JSON.parse(localStorage.getItem(LS.session) || 'null'); } catch (e) { return null; } }
+  function getProfiles() { try { return JSON.parse(localStorage.getItem(LS.profiles) || '{}'); } catch (e) { return {}; } }
+  function getLocalRecords() { try { return JSON.parse(localStorage.getItem(LS.records) || '[]'); } catch (e) { return []; } }
+  function getServer() { return localStorage.getItem(LS.server) || ''; }
+  function saveServer(s) { localStorage.setItem(LS.server, s); }
+  function setLocalRecords(list) { localStorage.setItem(LS.records, JSON.stringify(list)); }
+  function nowStr() {
+    const d = new Date(); const p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' +
+           p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+  function nowFull() {
+    const d = new Date(); const p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' +
+           p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  function fieldOf(obj, key) {
+    return (obj && obj[key] !== undefined && obj[key] !== null && String(obj[key]).trim() !== '')
+      ? String(obj[key]) : '-';
+  }
+
+  /* ---------- 会话校验：必须是囚犯（user）登录 ---------- */
+  const session = getSession();
+  if (!session || session.role !== 'user' || !session.username) {
+    window.location.replace('login.html');
+    return;
+  }
+  const MY_ID = session.username;
+
+  /* ---------- 页面切换 ---------- */
+  window.Page = {
+    go: function (name) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      $('page' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
+      if (name === 'home') renderProfile();
+      if (name === 'checkin') startCheckinPage();
+      if (name === 'history') renderHistory();
+      if (name === 'connect') startConnectPage();
+    }
+  };
+
+  /* ---------- 网络探测（2 秒超时） ---------- */
+  let online = false;
+  function probe(ms) {
+    return new Promise(function (resolve) {
+      const srv = getServer();
+      if (!srv) { online = false; resolve(false); return; }
+      const ctrl = new AbortController();
+      const timer = setTimeout(function () { ctrl.abort(); }, ms || 2000);
+      fetch(srv + '/api/ping', { signal: ctrl.signal })
+        .then(function (r) { return r.json(); })
+        .then(function (d) { clearTimeout(timer); online = !!(d && d.ok); resolve(online); })
+        .catch(function () { clearTimeout(timer); online = false; resolve(false); });
+    });
+  }
+  function updateOfflineBar() {
+    $('offlineBar').classList.toggle('show', !online);
+  }
+
+  /* ---------- 通用请求（带 token） ---------- */
+  function api(path, options, ms) {
+    return new Promise(function (resolve, reject) {
+      const srv = getServer();
+      if (!srv) { reject(new Error('未配置管理端地址')); return; }
+      const ctrl = new AbortController();
+      const timer = setTimeout(function () { ctrl.abort(); reject(new Error('连接超时')); }, ms || 8000);
+      const opt = Object.assign({}, options || {}, { signal: ctrl.signal });
+      if (!opt.headers) opt.headers = {};
+      if (session.token) opt.headers['Authorization'] = 'Bearer ' + session.token;
+      fetch(srv + path, opt)
+        .then(function (r) {
+          clearTimeout(timer);
+          return r.json().then(function (d) {
+            if (!r.ok || !d.ok) { reject(new Error(d.error || '请求失败')); return; }
+            resolve(d);
+          });
+        })
+        .catch(function (e) { clearTimeout(timer); reject(e); });
+    });
+  }
+
+  /* ---------- 顶部时间 ---------- */
+  $('topTime').textContent = nowFull();
+  setInterval(function () { $('topTime').textContent = nowFull(); }, 1000);
+
+  /* ============================================================
+     登录后的首次连接：自动探测 + 拉取资料 + 上传离线队列
+     ============================================================ */
+  function log(text, type) {
+    const box = $('syncLog');
+    if (!box) return;
+    const tag = type === 'ok' ? '<span class="ok">[成功]</span>'
+              : type === 'err' ? '<span class="err">[失败]</span>'
+              : '<span class="t">[系统]</span>';
+    box.innerHTML += '<div>' + tag + ' ' + esc(nowStr()) + ' ' + esc(text) + '</div>';
+    box.scrollTop = box.scrollHeight;
+  }
+
+  async function syncQueue() {
+    if (!online) return 0;
+    const records = getLocalRecords();
+    const pending = records.filter(r => r.sync_status === 0 && String(r.prisoner_id || r.username) === MY_ID);
+    if (pending.length === 0) { updateQueueCount(); return 0; }
+    try {
+      const payload = pending.map(function (r) {
+        return {
+          record_id: r.record_id, prisoner_id: r.prisoner_id || r.username,
+          time: r.time, lat: r.lat, lng: r.lng, address: r.address || '',
+          photo: r.photo || '', status: r.status || 'normal', sync_status: 0
+        };
+      });
+      const data = await api('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ records: payload })
+      }, 15000);
+      const accepted = data.accepted || [];
+      if (accepted.length) {
+        const okSet = new Set(accepted);
+        setLocalRecords(records.map(r => okSet.has(r.record_id) ? Object.assign({}, r, { sync_status: 1 }) : r));
+        log('已上传 ' + accepted.length + ' 条离线打卡记录', 'ok');
+        updateQueueCount();
+        return accepted.length;
+      }
+      if (data.cooldown && data.cooldown.length) {
+        log('服务端冷却拦截 ' + data.cooldown.length + ' 条（剩余 ' + data.cooldown[0].remain + ' 秒）', 'err');
+      }
+      return 0;
+    } catch (e) {
+      log('上传失败：' + e.message, 'err');
+      return 0;
+    }
+  }
+
+  async function pullProfile() {
+    if (!online || !session.token) return;
+    try {
+      const d = await api('/api/prisoner?token=' + encodeURIComponent(session.token));
+      if (d && d.prisoner) {
+        const profiles = getProfiles();
+        profiles[MY_ID] = d.prisoner;
+        localStorage.setItem(LS.profiles, JSON.stringify(profiles));
+        renderProfile(d.prisoner);
+      }
+    } catch (e) { /* 拉取失败不阻塞 */ }
+  }
+
+  async function firstConnect() {
+    updateQueueCount();
+    await probe();
+    updateOfflineBar();
+    if (online) {
+      log('已连接管理端：' + getServer(), 'ok');
+      await pullProfile();
+      await syncQueue();
+      renderHistory();   // 联网后刷新历史
+    } else {
+      log('当前离线，仅可使用本地缓存', '');
+    }
+  }
+
+  /* ============================================================
+     打卡流程
+     ============================================================ */
+  let lastLoc = null;
+  let clockTimer = null;
+  let checkTimer = null;
+
+  function getLocation(forceHigh) {
+    return new Promise(function (resolve, reject) {
+      if (!navigator.geolocation) { reject(new Error('设备不支持定位')); return; }
+      // 多种定位方法：多次高精度采样取精度最高（accuracy 最小）一次；全部失败 → 服务端 IP 定位兜底
+      const tries = 3;
+      let best = null;
+      let done = false;
+      let remaining = tries;
+      const finish = function () {
+        if (done) return;
+        if (best) {
+          done = true;
+          lastLoc = { lat: best.lat, lng: best.lng, accuracy: best.accuracy };
+          resolve(lastLoc);
+          return;
+        }
+        ipLocate().then(function (loc) {
+          done = true;
+          if (loc) { loc.accuracy = 5000; lastLoc = loc; resolve(loc); }
+          else { done = true; reject(new Error('定位失败（请检查定位权限与开关）')); }
+        }).catch(function () { done = true; reject(new Error('定位失败（请检查定位权限与开关）')); });
+      };
+      for (let i = 0; i < tries; i++) {
+        navigator.geolocation.getCurrentPosition(function (pos) {
+          const a = pos.coords.accuracy || 99999;
+          if (!best || a < best.accuracy) best = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: a };
+          remaining--; if (remaining <= 0) finish();
+        }, function () { remaining--; if (remaining <= 0) finish(); },
+        { enableHighAccuracy: forceHigh !== false, timeout: 8000, maximumAge: 15000 });
+      }
+    });
+  }
+
+  /* IP 定位兜底（经管理端服务代理，城市级低精度；坐标不在中国境内则放弃，避免代理出口在境外导致错误位置） */
+  async function ipLocate() {
+    try {
+      const srv = getServer();
+      if (!srv) return null;
+      const ctrl = new AbortController();
+      const timer = setTimeout(function () { ctrl.abort(); }, 5000);
+      const r = await fetch(srv + '/api/ip-loc', { signal: ctrl.signal });
+      clearTimeout(timer);
+      const d = await r.json();
+      if (d && d.ok && d.lat && d.lng) {
+        if (d.countryCode && d.countryCode !== 'CN') return null;
+        return { lat: d.lat, lng: d.lng };
+      }
+    } catch (e) { /* 忽略 */ }
+    return null;
+  }
+
+  /* 繁→简转换（降级服务返回繁体时兜底） */
+  function toSimplified(s) {
+    if (!s) return s;
+    var m = {
+      '龍':'龙','馬':'马','區':'区','灣':'湾','東':'东','縣':'县','鎮':'镇','鄉':'乡','門':'门','號':'号',
+      '陽':'阳','瀘':'泸','納':'纳','敘':'叙','藺':'蔺','貴':'贵','雲':'云','陝':'陕','廣':'广','慶':'庆',
+      '臺':'台','島':'岛','廈':'厦','橋':'桥','樓':'楼','園':'园','館':'馆','場':'场','匯':'汇','環':'环',
+      '鐵':'铁','莊':'庄','廟':'庙','觀':'观','醫':'医','學':'学','圖':'图','書':'书','報':'报','紙':'纸',
+      '訊':'讯','網':'网','絡':'络','線':'线','電':'电','話':'话','機':'机','車':'车','業':'业','務':'务',
+      '產':'产','廠':'厂','倉':'仓','庫':'库','銀':'银','稅':'税','費':'费','價':'价','錢':'钱','帳':'账',
+      '戶':'户','單':'单','據':'据','證':'证','員':'员','長':'长','處':'处','辦':'办','層':'层','棟':'栋',
+      '別':'别','塊':'块','組':'组','間':'间','廁':'厕','郵':'邮','編':'编','遞':'递','傳':'传',
+      '統':'统','計':'计','劃':'划','畫':'画','標':'标','識':'识','記':'记','錄':'录','誌':'志','邊':'边',
+      '際':'际','遠':'远','進':'进','開':'开','關':'关','閉':'闭','啟':'启','動':'动','發':'发','達':'达',
+      '現':'现','狀':'状','態':'态','況':'况','結':'结','構':'构','實':'实','驗':'验','測':'测','試':'试',
+      '論':'论','數':'数','資':'资','檔':'档','終':'终','端':'端','連':'连','斷':'断','頻':'频','譜':'谱',
+      '儀':'仪','鍵':'键','盤':'盘','顯':'显','螢':'萤','幕':'幕','視':'视','選':'选','項':'项','設':'设',
+      '預':'预','約':'约','會':'会','議':'议','鐘':'钟','錶':'表','時':'时','歷':'历','備':'备','還':'还',
+      '刪':'删','復':'复','製':'制','貼':'贴','細':'细','則':'则','規':'规','範':'范','圍':'围','內':'内',
+      '織':'织','職':'职','領':'领','導':'导','師':'师','課':'课','級':'级','稱':'称','榮':'荣','譽':'誉',
+      '獎':'奖','決':'决','執':'执','監':'监','督':'督','準':'准','檢':'检','評':'评','審':'审','核':'核',
+      '簽':'签','蓋':'盖','碼':'码','鎖':'锁','鑰':'钥','維':'维','護':'护','養':'养','紀':'纪','告':'告',
+      '欄':'栏','輸':'输','註':'注','冊':'册','權':'权','陸':'陆','國':'国','華':'华','蘇':'苏','閩':'闽',
+      '贛':'赣','魯':'鲁','晉':'晋','寧':'宁','壩':'坝','裡':'里','裏':'里','邨':'村','壘':'垒','專':'专',
+      '湯':'汤','溫':'温','澤':'泽','濟':'济','寶':'宝','賓':'宾','鳳':'凤','鵬':'鹏','鶴':'鹤','溝':'沟',
+      '崗':'岗','嶺':'岭','嶼':'屿','巖':'岩','巒':'峦','嶄':'崭','峽':'峡','嵐':'岚','淺':'浅','體':'体',
+      '萬':'万','與':'与','無':'无','爲':'为','為':'为','於':'于','衆':'众','從':'从','來':'来','個':'个',
+      '時':'时','後':'后','會':'会','過':'过','對':'对','當':'当','應':'应','這':'这','麼':'么','兩':'两',
+      '裏':'里','們':'们','並':'并','軍':'军','師':'师','術':'术','書':'书','發':'发','雖':'虽','難':'难',
+      '準':'准','盡':'尽','種':'种','學':'学','問':'问','題':'题','聞':'闻','門':'门','閉':'闭','間':'间',
+      '雙':'双','聽':'听','聲':'声','體':'体','點':'点','張':'张','將':'将','壯':'壮','裝':'装','識':'识',
+      '話':'话','說':'说','認':'认','請':'请','講':'讲','論':'论','護':'护','讓':'让','讀':'读','課':'课',
+      '讓':'让','變':'变','許':'许','講':'讲','謝':'谢','計':'计','詞':'词','詳':'详','議':'议','証':'证'
+    };
+    var r = '';
+    for (var i = 0; i < s.length; i++) { r += m[s[i]] || s[i]; }
+    return r;
+  }
+
+  /* 逆地理编码：服务端代理（在线时）优先 → Nominatim → bigdatacloud 兜底（繁体转简体） */
+  async function reverseGeocode(lat, lng) {
+    // 0) 服务端代理（电脑出网，UA 完整、结果更稳）
+    try {
+      const srv = getServer();
+      if (srv) {
+        const ctrl = new AbortController();
+        const timer = setTimeout(function () { ctrl.abort(); }, 25000);
+        const r = await fetch(srv + '/api/regeo?lat=' + lat + '&lng=' + lng, { signal: ctrl.signal });
+        clearTimeout(timer);
+        const d = await r.json();
+        if (d && d.ok && d.address) return toSimplified(d.address);
+      }
+    } catch (e) { /* 降级 */ }
+    // 1) Nominatim
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(function () { ctrl.abort(); }, 8000);
+      const url = 'https://nominatim.openstreetmap.org/reverse?lat=' + lat + '&lon=' + lng +
+                  '&format=jsonv2&zoom=18&accept-language=zh-CN';
+      const resp = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (resp.ok) {
+        const d = await resp.json();
+        if (d && d.display_name) {
+          const parts = toSimplified(d.display_name).split(',').map(x => x.trim()).filter(Boolean);
+          while (parts.length && (/^中国$/.test(parts[parts.length - 1]) || /^\d{5,6}$/.test(parts[parts.length - 1]))) parts.pop();
+          const seen = {}; const out = [];
+          for (const p of parts) { if (!seen[p]) { seen[p] = 1; out.push(p); } }
+          if (out.length) return out.join('，');
+          return toSimplified(d.display_name);
+        }
+      }
+    } catch (e) { /* 降级 */ }
+    // 2) bigdatacloud 兜底
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(function () { ctrl.abort(); }, 8000);
+      const url = 'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' + lat + '&longitude=' + lng + '&localityLanguage=zh';
+      const resp = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (resp.ok) {
+        const d = await resp.json();
+        const parts = []; const seen = {};
+        const push = s => { s = toSimplified(String(s || '').trim()); if (s && !seen[s]) { parts.push(s); seen[s] = 1; } };
+        if (d.principalSubdivision) push(d.principalSubdivision);
+        if (d.city && d.city !== d.principalSubdivision) push(d.city);
+        if (d.locality && d.locality !== d.city) push(d.locality);
+        if (d.localityInfo && d.localityInfo.administrative) {
+          for (const a of d.localityInfo.administrative) {
+            if (a && a.description && /street|road|suburb|town|village|neighbourhood|hamlet|district/i.test(a.description)) push(a.name);
+          }
+        }
+        if (parts.length) return parts.join('');
+      }
+    } catch (e) { /* 忽略 */ }
+    return null;
+  }
+
+  /* 打卡照片压缩（≤1080px、质量 0.7） */
+  function compressFile(file, maxSide, quality) {
+    return new Promise(function (resolve, reject) {
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const img = new Image();
+        img.onload = function () {
+          const MAX = maxSide || 1080;
+          let w = img.width, h = img.height;
+          if (w > h && w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+          else if (h >= w && h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', quality || 0.7));
+        };
+        img.onerror = function () { reject(new Error('图片加载失败')); };
+        img.src = e.target.result;
+      };
+      reader.onerror = function () { reject(new Error('文件读取失败')); };
+      reader.readAsDataURL(file);
+    });
+  }
+  /* 强制相机拍照：APP 内优先原生相机（cordova-plugin-camera，sourceType=CAMERA 只允许相机）；
+     浏览器/PWA 回退 file input capture=camera */
+  function capturePhoto() {
+    return new Promise(function (resolve, reject) {
+      if (typeof navigator !== 'undefined' && navigator.camera && navigator.camera.getPicture) {
+        navigator.camera.getPicture(function (dataUrl) {
+          resolve(dataUrl);
+        }, function (err) {
+          let msg = '相机调用失败';
+          if (err && err.code !== undefined) {
+            const names = { 1: '文件保存失败', 2: '无更新', 3: '设备不支持', 4: '参数错误', 20: '权限被拒绝或已取消拍照' };
+            msg += '（错误码 ' + err.code + (names[err.code] ? '：' + names[err.code] : '') + '）';
+            if (err.message) msg += ' ' + err.message;
+          }
+          reject(new Error(msg));
+        }, {
+          quality: 60,
+          destinationType: navigator.camera.DestinationType.DATA_URL,
+          sourceType: navigator.camera.PictureSourceType.CAMERA,
+          allowEdit: false,
+          encodingType: navigator.camera.EncodingType.JPEG,
+          targetWidth: 1080,
+          targetHeight: 1080,
+          correctOrientation: true,
+          saveToPhotoAlbum: false
+        });
+        return;
+      }
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.capture = 'camera';
+      input.style.display = 'none';
+      let settled = false;
+      const timer = setTimeout(function () { if (!settled) { settled = true; input.remove(); reject(new Error('拍照超时，请重试')); } }, 90000);
+      input.addEventListener('change', function () {
+        if (settled) return;
+        const file = input.files && input.files[0];
+        if (!file) { clearTimeout(timer); settled = true; input.remove(); reject(new Error('未拍摄照片')); return; }
+        if (!/^image\//.test(file.type)) { clearTimeout(timer); settled = true; input.remove(); reject(new Error('拍摄内容不是图片')); return; }
+        compressFile(file, 1080, 0.7).then(function (dataUrl) {
+          clearTimeout(timer); settled = true; input.remove(); resolve(dataUrl);
+        }).catch(function (e) { clearTimeout(timer); settled = true; input.remove(); reject(e); });
+      });
+      input.addEventListener('cancel', function () {
+        if (settled) return;
+        clearTimeout(timer); settled = true; input.remove(); reject(new Error('已取消拍照'));
+      });
+      document.body.appendChild(input);
+      input.click();
+    });
+  }
+  function setStatus(text, isError) {
+    const el = $('checkStatus');
+    el.textContent = text;
+    el.className = 'checkin-status' + (isError ? ' err' : text ? ' ok' : '');
+  }
+  function getCooldown() {
+    const key = 'checkin_cooldown_' + MY_ID;
+    const last = Number(localStorage.getItem(key) || 0);
+    return Math.max(0, COOLDOWN_MS - (Date.now() - last));
+  }
+  function setCooldown() {
+    localStorage.setItem('checkin_cooldown_' + MY_ID, String(Date.now()));
+  }
+  function updateCooldownUI() {
+    const btn = $('checkBtn');
+    const remain = getCooldown();
+    if (remain > 0) {
+      btn.disabled = true;
+      btn.classList.add('cooldown');
+      const m = Math.floor(remain / 60000), s = Math.ceil((remain % 60000) / 1000);
+      btn.textContent = '冷却 ' + (m > 0 ? m + ' 分 ' : '') + s + ' 秒';
+      clearTimeout(checkTimer);
+      checkTimer = setTimeout(updateCooldownUI, 500);
+    } else {
+      btn.disabled = false;
+      btn.classList.remove('cooldown');
+      btn.textContent = '打 卡';
+    }
+  }
+
+  function startCheckinPage() {
+    renderProfile();
+    const d = new Date(); const p = n => String(n).padStart(2, '0');
+    $('ckClock').textContent = p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    $('ckDate').textContent = d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日 星期' + '日一二三四五六'[d.getDay()];
+    clearInterval(clockTimer);
+    clockTimer = setInterval(function () {
+      const x = new Date(); const q = n => String(n).padStart(2, '0');
+      $('ckClock').textContent = q(x.getHours()) + ':' + q(x.getMinutes()) + ':' + q(x.getSeconds());
+    }, 1000);
+    updateCooldownUI();
+    setStatus('', false);
+    // 进入打卡页：联网则先同步离线队列、刷新罪犯资料、拉取服务端打卡间隔配置
+    probe().then(function () {
+      if (online) {
+        syncQueue(); pullProfile().then(renderProfile);
+        api('/api/config', {}, 8000).then(function (d) {
+          if (d && d.checkinCooldownMin) {
+            COOLDOWN_MS = d.checkinCooldownMin * 60 * 1000;
+            updateCooldownUI();
+          }
+        }).catch(function () {});
+      }
+    });
+  }
+
+  /* 提交打卡：选择类型（请求自慰 / 报告位置）→ 自动定位 → 直接相机拍照 → 解析地址 → 上传 */
+  async function doCheckin(statusType) {
+    const kind = statusType === 'study' ? '自慰' : '正常';
+    if (getCooldown() > 0) { updateCooldownUI(); return; }
+    const btn = $('checkBtn');
+    btn.disabled = true;
+    setStatus('正在获取定位…', false);
+
+    let loc;
+    try { loc = await getLocation(); }
+    catch (e) { setStatus(e.message + '（请在系统设置中开启定位权限）', true); btn.disabled = false; updateCooldownUI(); return; }
+
+    setStatus('请对准镜头拍照…', false);
+    let photo = '';
+    try { photo = await capturePhoto(); }
+    catch (e) { setStatus(e.message, true); btn.disabled = false; updateCooldownUI(); return; }
+
+    setStatus('正在解析地址…', false);
+    let addr = '';
+    try { addr = await reverseGeocode(loc.lat, loc.lng) || ''; } catch (e) { addr = ''; }
+
+    setStatus('正在提交…', false);
+    const record = {
+      record_id: 'c' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+      prisoner_id: MY_ID, username: MY_ID,
+      time: nowFull(), lat: loc.lat.toFixed(6), lng: loc.lng.toFixed(6),
+      address: addr, photo: photo,
+      status: kind === '自慰' ? 'study' : 'normal', sync_status: 0, created_at: nowStr()
+    };
+
+    // 联网：直接提交服务端（服务端权威校验 5 分钟冷却 + 去重）
+    if (online) {
+      try {
+        const data = await api('/api/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ records: [record] })
+        }, 20000);
+        if (data.cooldown && data.cooldown.length) {
+          const remain = data.cooldown[0].remain;
+          localStorage.setItem('checkin_cooldown_' + MY_ID, String(Date.now() - COOLDOWN_MS + remain * 1000));
+          setStatus('打卡过于频繁，请 ' + Math.floor(remain / 60) + ' 分 ' + (remain % 60) + ' 秒后再试（服务端校验）', true);
+          updateCooldownUI();
+          return;
+        }
+        record.sync_status = 1;
+        await saveLocal(record);
+        setCooldown();
+        setStatus('已打卡（' + nowFull() + '，' + kind + '），' + Math.round(COOLDOWN_MS / 60000) + ' 分钟后可再次打卡', false);
+        btn.classList.add('done');
+        btn.textContent = '✓ 已打卡';
+        setTimeout(function () { btn.classList.remove('done'); updateCooldownUI(); }, 2000);
+      } catch (e) {
+        // 网络抖动：转入本地队列
+        await saveLocal(record);
+        setCooldown();
+        setStatus('连接中断，记录已保存在本机，联网后自动上传', true);
+      }
+    } else {
+      await saveLocal(record);
+      setCooldown();
+      setStatus('离线模式：已保存，联网后自动上传（5 分钟后可再次打卡）', true);
+    }
+
+    renderHistory();
+    updateQueueCount();
+  }
+  async function saveLocal(record) {
+    const records = getLocalRecords();
+    if (!records.some(r => r.record_id === record.record_id)) records.unshift(record);
+    setLocalRecords(records);
+  }
+  /* 打卡按钮：先弹出类型选择（请求自慰 / 报告位置） */
+  $('checkBtn').addEventListener('click', function () {
+    if (getCooldown() > 0) { updateCooldownUI(); return; }
+    $('checkinOptionModal').classList.add('show');
+  });
+  $('optStudyBtn').addEventListener('click', function () {
+    $('checkinOptionModal').classList.remove('show');
+    doCheckin('study');
+  });
+  $('optNormalBtn').addEventListener('click', function () {
+    $('checkinOptionModal').classList.remove('show');
+    doCheckin('normal');
+  });
+  $('optCancelBtn').addEventListener('click', function () {
+    $('checkinOptionModal').classList.remove('show');
+  });
+
+  /* 罪犯信息（内嵌打卡页） */
+  function renderProfile(p) {
+    const profile = p || (getProfiles()[MY_ID] || {});
+    $('pfAvatar').src = (profile.avatar && String(profile.avatar).trim()) ? profile.avatar : 'logo.jpg';
+    $('pfName').textContent = fieldOf(profile, 'name') === '-' ? MY_ID : fieldOf(profile, 'name');
+    $('pfUsername').textContent = MY_ID;
+    $('pfTreatment').textContent = fieldOf(profile, 'treatment');
+    $('pfArea').textContent = fieldOf(profile, 'prisonArea');
+    $('pfCrime').textContent = fieldOf(profile, 'crime');
+  }
+
+  /* ============================================================
+     历史记录（服务端 + 本地合并，去重）
+     ============================================================ */
+  async function renderHistory() {
+    const card = $('historyCard');
+    const mine = getLocalRecords().filter(r => String(r.prisoner_id || r.username) === MY_ID);
+    card.innerHTML = '<p class="muted">加载中…</p>';
+    let serverRecs = [];
+    if (online && session.token) {
+      try {
+        const d = await api('/api/records?token=' + encodeURIComponent(session.token));
+        serverRecs = d.records || [];
+      } catch (e) { /* 离线 */ }
+    }
+    const map = new Map();
+    serverRecs.forEach(r => map.set(r.record_id || r.id, r));
+    mine.forEach(r => { if (!map.has(r.record_id)) map.set(r.record_id, r); });
+    const list = Array.from(map.values()).sort(function (a, b) { return String(b.time).localeCompare(String(a.time)); });
+    if (list.length === 0) {
+      card.innerHTML = '<p class="muted">暂无打卡记录。回到首页点击「打卡」完成第一次点名。</p>';
+      return;
+    }
+    let html = '';
+    list.forEach(function (r, i) {
+      const img = r.photo || r.image || '';
+      const addr = (r.address && String(r.address).trim()) ? r.address : '未记录地址';
+      const sync = r.sync_status === 0
+        ? '<span class="status-badge status-local">待上传</span>'
+        : '<span class="status-badge status-synced">已同步</span>';
+      const kind = r.status === 'study'
+        ? '<span class="status-badge status-study">自慰</span>'
+        : (r.status === 'edited' ? '<span class="status-badge status-local">已修改</span>' : '');
+      html += '<div class="hist-item">' +
+        (img ? '<img src="' + img + '" alt="打卡照片">' : '<div style="width:86px;flex-shrink:0"></div>') +
+        '<div class="meta">' +
+          '<div class="t">' + esc(r.time || '--') + '　' + sync + '　' + kind + '</div>' +
+          '<div class="addr">' + esc(addr) + '</div>' +
+          '<div>经度 ' + esc(fieldOf(r, 'lng')) + ' / 纬度 ' + esc(fieldOf(r, 'lat')) + '</div>' +
+        '</div></div>';
+    });
+    card.innerHTML = html;
+  }
+
+  /* ============================================================
+     连接设置页
+     ============================================================ */
+  function updateQueueCount() {
+    const n = getLocalRecords().filter(r => r.sync_status === 0 && String(r.prisoner_id || r.username) === MY_ID).length;
+    $('queueCount').textContent = n;
+  }
+  function updateConnUI() {
+    const srv = getServer();
+    $('connAddrText').textContent = srv ? srv : '尚未设置服务器';
+    const pill = $('connPill');
+    if (!srv) { pill.textContent = '未设置'; pill.className = 'pill err'; }
+    else if (online) { pill.textContent = '已连接'; pill.className = 'pill ok'; }
+    else { pill.textContent = '未连接'; pill.className = 'pill err'; }
+    $('serverInput').value = srv || '';
+  }
+  function startConnectPage() {
+    updateConnUI();
+    updateQueueCount();
+    probe().then(function () { updateOfflineBar(); updateConnUI(); });
+  }
+  $('saveServerBtn').addEventListener('click', async function () {
+    const val = $('serverInput').value.trim().replace(/\/+$/, '');
+    if (!/^https?:\/\/[\w.-]+(:\d+)?$/.test(val)) { alert('地址格式不正确，示例：http://192.168.1.100:8090'); return; }
+    saveServer(val);
+    await probe(3000);
+    updateOfflineBar(); updateConnUI();
+    if (online) { log('已连接 ' + val + '，开始同步…', 'ok'); await pullProfile(); await syncQueue(); renderHistory(); }
+    else { log('无法连接 ' + val + '，请检查管理端 EXE 是否运行、防火墙是否放行 8090 端口', 'err'); }
+  });
+  $('syncBtn').addEventListener('click', async function () {
+    await probe();
+    updateOfflineBar(); updateConnUI();
+    if (!online) { log('未连接管理端，无法同步', 'err'); return; }
+    const n = await syncQueue();
+    if (n === 0) log('没有待上传的离线记录', 'ok');
+  });
+  $('pullBtn').addEventListener('click', async function () {
+    await probe();
+    updateOfflineBar(); updateConnUI();
+    if (!online) { log('未连接管理端，无法拉取', 'err'); return; }
+    await pullProfile();
+    log('囚犯资料已更新', 'ok');
+    renderProfile();
+  });
+
+  /* 扫码连接（cordova-plugin-qrscanner，仅 APP 内可用） */
+  $('scanBtn').addEventListener('click', function () {
+    if (typeof QRScanner === 'undefined') {
+      alert('当前环境不支持扫码（请在安卓 APP 中使用）。也可用手机相机扫描管理端二维码打开网页后自动配置连接。');
+      return;
+    }
+    QRScanner.prepare(function (err, status) {
+      if (err) { alert('扫码初始化失败：' + (err.name || err.message || err)); return; }
+      if (!status.authorized) { alert('未获得相机权限，请在系统设置中开启'); return; }
+      QRScanner.scan(function (err2, text) {
+        QRScanner.hide(function () { /* 隐藏扫码界面 */ });
+        if (err2) { alert('扫码失败：' + (err2.name || err2.message || err2)); return; }
+        const m = /^(https?:\/\/[\w.-]+(:\d+)?)/.exec(String(text || '').trim());
+        if (!m) { alert('二维码内容不是有效的管理端地址'); return; }
+        saveServer(m[1].replace(/\/+$/, ''));
+        updateConnUI();
+        log('扫码获取地址：' + m[1] + '，正在连接…', 'ok');
+        probe(3000).then(function () {
+          updateOfflineBar(); updateConnUI();
+          if (online) { pullProfile(); syncQueue(); renderHistory(); }
+        });
+      });
+    });
+  });
+
+  /* ============================================================
+     首页入口
+     ============================================================ */
+  $('goCheckinBtn').addEventListener('click', function () { Page.go('checkin'); });
+  $('goHistoryBtn').addEventListener('click', function () { Page.go('history'); });
+  $('goConnectBtn').addEventListener('click', function () { Page.go('connect'); });
+
+  /* ============================================================
+     初始化：启动即探测 + 自动同步 + 拉取资料
+     ============================================================ */
+  (async function () {
+    renderProfile();   // 首页显示罪犯信息
+    // 通过二维码 URL 直接打开（http://IP:8090/connect?v=2）→ 自动配置服务器
+    if (location.protocol === 'http:' && location.origin) {
+      if (getServer() !== location.origin) {
+        saveServer(location.origin);
+        log('已从访问地址自动识别管理端：' + location.origin, 'ok');
+      }
+    }
+    await firstConnect();
+    setInterval(function () {
+      if (document.visibilityState === 'visible') {
+        probe().then(function () {
+          updateOfflineBar();
+          if (online) { syncQueue(); pullProfile(); }
+        });
+      }
+    }, 30000);
+  })();
+})();
+</script>
+</body>
+</html>
