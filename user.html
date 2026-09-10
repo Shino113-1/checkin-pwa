@@ -1,0 +1,937 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>打卡系统 - 用户端</title>
+<meta name="theme-color" content="#0d2f6e">
+<link rel="manifest" href="manifest.json">
+<style>
+/* ============================================================
+   打卡系统 · 用户端 (user.html)  v3
+   v3 升级内容：
+     1) 页面底部新增两个无边框切换按钮：【打卡】【囚犯信息】，
+        点击切换对应区域内容；
+     2) 打卡页：超大红色【打卡】按钮 → 点击自动获取定位（经纬度 +
+        详细中文地址）→ 唤起图片选择（拍照/本地）→ 自动提交；
+        成功后按钮变绿色【已打卡】，并有 1 分钟打卡冷却限制；
+     3) 囚犯信息页：展示囚犯头像、姓名、囚号、待遇、监区、罪名（只读），
+        并实时显示当前设备时间与当前详细定位地点。
+   保留功能：登录校验、定位逆地址解析、打卡记录查看（卡片式）、
+   图片压缩存储、旧数据兼容。
+   主题：深蓝色主色调；页面顶部、底部为黑白横向条纹装饰
+   ============================================================ */
+:root{
+  --blue-deep:#0d2f6e;
+  --blue-light:#16418f;
+  --blue-dark:#081f4a;
+  --red:#d93025;
+  --ok:#1e8e3e;
+  --text:#1f2937;
+  --muted:#6b7280;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:"Microsoft YaHei","PingFang SC","Segoe UI",Arial,sans-serif;
+  background:linear-gradient(160deg,var(--blue-dark) 0%,var(--blue-deep) 60%,var(--blue-light) 100%);
+  min-height:100vh;
+  padding:24px 0 140px;  /* 底部留白：条纹 + 底部切换按钮 */
+}
+
+/* ---- 顶部 / 底部 黑白横向条纹装饰 ---- */
+.stripes{
+  position:fixed;left:0;right:0;height:24px;z-index:1000;
+  background:repeating-linear-gradient(to bottom,#000 0 12px,#fff 12px 24px);
+}
+.stripes.top{top:0}
+.stripes.bottom{bottom:0}
+
+/* ---- 顶栏 ---- */
+.topbar{
+  position:sticky;top:24px;z-index:900;
+  background:var(--blue-dark);color:#fff;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 20px;box-shadow:0 4px 16px rgba(0,0,0,.25);
+}
+.topbar .brand{font-size:18px;font-weight:700;display:flex;align-items:center}
+.badge-sm{
+  width:30px;height:30px;border-radius:50%;vertical-align:middle;
+  margin-right:8px;border:1px solid rgba(255,255,255,.5);
+}
+.topbar .right{display:flex;align-items:center;gap:14px;font-size:13px}
+.topbar .right .welcome{color:#ffd87a}
+.btn-sm{
+  padding:6px 14px;border:none;border-radius:6px;cursor:pointer;font-size:13px;
+  background:var(--red);color:#fff;transition:opacity .2s;
+}
+.btn-sm:hover{opacity:.85}
+
+/* ---- 主体 ---- */
+main{max-width:920px;margin:24px auto 0;padding:0 16px}
+.card{
+  background:#fff;border-radius:12px;padding:24px;margin-bottom:20px;
+  box-shadow:0 6px 24px rgba(0,0,0,.18);
+}
+.card h2{
+  font-size:17px;color:var(--blue-deep);margin-bottom:16px;
+  padding-bottom:10px;border-bottom:2px solid var(--blue-deep);
+}
+.hint{font-size:12px;color:var(--muted);margin-bottom:12px}
+
+/* ---- 超大红色打卡按钮 ---- */
+.big-btn{
+  width:210px;height:210px;border-radius:50%;border:none;cursor:pointer;
+  background:var(--red);color:#fff;font-size:32px;font-weight:700;letter-spacing:6px;
+  box-shadow:0 12px 32px rgba(217,48,37,.45);margin:14px auto 20px;display:block;
+  transition:background .3s,transform .1s;
+}
+.big-btn:hover:not(:disabled){transform:scale(1.03)}
+.big-btn:disabled{cursor:not-allowed}
+.big-btn.done{background:var(--ok);box-shadow:0 12px 32px rgba(30,142,62,.45)}
+.checkin-status{
+  text-align:center;font-size:13px;color:var(--muted);min-height:22px;
+  white-space:pre-line;line-height:1.8;
+}
+.checkin-status.error{color:var(--red)}
+.countdown{text-align:center;font-size:13px;color:var(--ok);min-height:20px}
+
+/* 手动定位兜底 */
+.manual-row{display:none;margin-top:14px;gap:10px;flex-wrap:wrap;align-items:center;justify-content:center}
+.manual-row input{
+  width:170px;height:36px;padding:0 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;
+}
+.manual-row input.wide{width:min(420px,100%)}
+
+/* 按钮 */
+.btn{
+  border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;
+  background:var(--blue-deep);color:#fff;padding:10px 22px;transition:background .2s;
+}
+.btn:hover{background:var(--blue-light)}
+.btn-cancel{
+  border:none;border-radius:8px;cursor:pointer;font-size:14px;font-weight:600;
+  background:#e5e7eb;color:var(--text);padding:10px 22px;
+}
+.btn-cancel:hover{background:#d1d5db}
+.btn:disabled{background:#9db4dd;cursor:not-allowed}
+
+/* ---- 打卡记录卡片列表（顶部图片为该次打卡标识图） ---- */
+.record-list{display:flex;flex-direction:column;gap:16px}
+.record-card{
+  background:#fff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;
+  box-shadow:0 2px 8px rgba(0,0,0,.08);
+}
+.record-card .record-img{
+  width:100%;height:200px;object-fit:cover;cursor:zoom-in;display:block;background:#eef3fb;
+}
+.record-card .record-meta{padding:12px 16px;font-size:13px;color:var(--text);line-height:2}
+.record-card .record-meta b{color:var(--blue-deep);font-weight:600}
+.record-card .record-meta .rc-addr{color:var(--blue-light)}
+.empty{text-align:center;color:var(--muted);padding:24px 0;font-size:13px}
+
+/* ---- 囚犯信息页 ---- */
+.profile{display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.avatar{
+  width:84px;height:84px;border-radius:50%;object-fit:cover;
+  border:2px solid var(--blue-deep);background:#eef3fb;flex-shrink:0;
+}
+.profile-fields{
+  flex:1;min-width:300px;
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));
+  gap:10px 24px;
+}
+.pf-row{display:flex;align-items:center;font-size:13px;line-height:1.6}
+.pf-row .k{color:var(--muted);margin-right:8px;min-width:32px;flex-shrink:0}
+.pf-row .v{color:var(--text);font-weight:600;word-break:break-all}
+.clock-box{
+  background:#f4f8ff;border:1px dashed var(--blue-light);border-radius:8px;
+  padding:14px;margin-top:12px;font-size:15px;color:var(--blue-deep);font-weight:600;
+  text-align:center;letter-spacing:1px;
+}
+.loc-box{
+  background:#f4f8ff;border:1px dashed var(--blue-light);border-radius:8px;
+  padding:14px;margin-top:12px;font-size:13px;color:var(--text);line-height:1.9;
+  white-space:pre-line;
+}
+.loc-box.error{background:#fef2f2;border-color:var(--red)}
+
+/* ---- 同步页（离线缓存 / 局域网） ---- */
+.sync-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px 0}
+.sync-row input[type="text"]{
+  flex:1;min-width:220px;height:38px;padding:0 10px;border:1px solid #cbd5e1;
+  border-radius:8px;font-size:13px;
+}
+.sync-row input:focus{outline:none;border-color:var(--blue-deep)}
+.seg{display:inline-flex;border:1px solid #cbd5e1;border-radius:20px;overflow:hidden}
+.seg button{
+  border:none;background:#fff;padding:8px 22px;font-size:13px;cursor:pointer;
+  color:var(--muted);transition:background .2s,color .2s;
+}
+.seg button.active{background:var(--blue-deep);color:#fff}
+.sync-stat{
+  background:#eef4fc;border:1px solid #c8daf5;border-radius:8px;padding:10px 12px;
+  font-size:13px;color:var(--text);line-height:1.7;margin:10px 0;word-break:break-all;
+}
+.sync-stat.ok{background:#ecfdf3;border-color:#b7e4c7}
+.sync-stat.err{background:#fef2f2;border-color:#f3c1be}
+.sync-log{
+  background:#0d1b3a;color:#cfe0ff;border-radius:8px;padding:10px 12px;font-size:12px;
+  line-height:1.8;max-height:200px;overflow-y:auto;font-family:Consolas,monospace;
+  white-space:pre-wrap;word-break:break-all;margin-top:10px;
+}
+.sync-log .t{color:#8fb3ff}
+.sync-log .ok{color:#7ee2a8}
+.sync-log .err{color:#ff9d94}
+
+/* ---- 底部无边框切换按钮（固定在底部条纹上方） ---- */
+.bottom-nav{
+  position:fixed;left:0;right:0;bottom:24px;z-index:950;
+  display:flex;justify-content:center;gap:0;padding:6px 0;
+  background:rgba(8,31,74,.92);backdrop-filter:blur(2px);
+  box-shadow:0 -2px 12px rgba(0,0,0,.25);
+}
+.nav-btn{
+  border:none;background:transparent;color:#9db4dd;font-size:16px;font-weight:600;
+  padding:12px 44px;cursor:pointer;letter-spacing:2px;transition:color .2s;
+}
+.nav-btn.active{color:#fff;background:var(--blue-light);border-radius:24px;padding:12px 44px}
+.nav-btn:not(.active):hover{color:#dbe7ff}
+
+/* 大图预览弹窗 */
+.modal{
+  position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;
+  align-items:center;justify-content:center;z-index:2000;cursor:zoom-out;
+}
+.modal img{max-width:92vw;max-height:92vh;border-radius:8px;box-shadow:0 10px 40px rgba(0,0,0,.6)}
+</style>
+</head>
+<body>
+
+<div class="stripes top"></div>
+<div class="stripes bottom"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <img class="badge-sm" id="badgeSm" alt="系统徽章">
+    <span>打卡系统 · 用户端</span>
+  </div>
+  <div class="right">
+    <span>当前囚犯：<span class="welcome" id="welcomeName"></span></span>
+    <button type="button" class="btn-sm" id="logoutBtn">退出登录</button>
+  </div>
+</header>
+
+<main>
+  <!-- ============ 视图一：打卡 ============ -->
+  <div id="viewCheckin">
+    <!-- 超大红色打卡按钮 -->
+    <section class="card">
+      <h2>今日打卡</h2>
+      <p class="hint">点击【打卡】按钮：自动获取定位（经纬度 + 详细中文地址），随后弹出图片选择（支持拍照或本地图片），选择后自动完成打卡。打卡成功 1 分钟内不可重复打卡。</p>
+      <button type="button" class="big-btn" id="bigBtn">打卡</button>
+      <p class="countdown" id="countdown"></p>
+      <p class="checkin-status" id="checkinStatus"></p>
+      <!-- 定位失败时的手动兜底 -->
+      <div class="manual-row" id="manualWrap">
+        <input type="text" id="manualLat" placeholder="纬度，如 39.9042">
+        <input type="text" id="manualLng" placeholder="经度，如 116.4074">
+        <input type="text" id="manualAddr" class="wide" placeholder="详细地址，如：四川省成都市金牛区XX路XX号">
+        <button type="button" class="btn" id="manualContinueBtn" style="padding:8px 16px">使用手动定位并继续打卡</button>
+      </div>
+      <!-- 隐藏的图片选择框（由打卡按钮唤起，支持拍照/相册/本地） -->
+      <input type="file" id="imageInput" accept="image/*" style="display:none">
+    </section>
+
+    <!-- 我的打卡记录 -->
+    <section class="card">
+      <h2>我的打卡记录</h2>
+      <p class="hint">每条记录顶部展示本次打卡上传的图片（作为该次打卡的标识图），点击图片可放大查看。</p>
+      <p class="empty" id="emptyTip" style="display:none">暂无打卡记录，点击上方红色按钮打卡吧。</p>
+      <div class="record-list" id="historyList"></div>
+    </section>
+  </div>
+
+  <!-- ============ 视图二：囚犯信息 ============ -->
+  <div id="viewPrisoner" style="display:none">
+    <!-- 囚犯信息（只读） -->
+    <section class="card">
+      <h2>囚犯信息</h2>
+      <div class="profile">
+        <img class="avatar" id="profileAvatar" alt="囚犯头像">
+        <div class="profile-fields">
+          <div class="pf-row"><span class="k">姓名</span><span class="v" id="pfName"></span></div>
+          <div class="pf-row"><span class="k">囚号</span><span class="v" id="pfUsername"></span></div>
+          <div class="pf-row"><span class="k">待遇</span><span class="v" id="pfTreatment"></span></div>
+          <div class="pf-row"><span class="k">监区</span><span class="v" id="pfPrisonArea"></span></div>
+          <div class="pf-row"><span class="k">罪名</span><span class="v" id="pfCrime"></span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 当前时间与当前定位地点 -->
+    <section class="card">
+      <h2>当前时间与定位</h2>
+      <div class="clock-box" id="liveClock">--</div>
+      <div class="loc-box" id="locBox2">正在获取当前定位…</div>
+      <div style="margin-top:12px">
+        <button type="button" class="btn" id="refreshLocBtn">刷新定位</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ============ 视图三：同步（离线缓存 / 局域网） ============ -->
+  <div id="viewSync" style="display:none">
+    <section class="card">
+      <h2>离线与同步</h2>
+      <p class="hint">未连接管理端时，打卡数据（图片、定位、时间）先保存在本机【离线缓存】；成功连接管理端后自动上传，同步完成后自动清空本地离线缓存。</p>
+
+      <!-- 局域网设置：输入管理端 IP 一键连接（唯一同步通道） -->
+      <div id="lanPanel">
+        <div class="sync-row">
+          <input type="text" id="serverAddr" placeholder="管理端地址，如：http://192.168.1.100:8090">
+          <button type="button" class="btn" id="connectLanBtn" style="padding:9px 18px">一键连接</button>
+        </div>
+      </div>
+
+      <!-- 连接状态 -->
+      <div class="sync-stat" id="syncStat">当前未连接管理端，打卡数据将保存在本机（离线模式）。</div>
+
+      <!-- 手动同步 + 离线缓存统计 -->
+      <div class="sync-row">
+        <button type="button" class="btn" id="syncNowBtn" style="padding:9px 18px">立即同步</button>
+        <span class="hint" id="pendingTip" style="margin:0">离线缓存：0 条待上传</span>
+      </div>
+
+      <!-- 同步日志 -->
+      <div class="sync-log" id="syncLog"></div>
+    </section>
+  </div>
+</main>
+
+<!-- 底部无边框切换按钮 -->
+<nav class="bottom-nav">
+  <button type="button" class="nav-btn active" id="tabCheckin">打卡</button>
+  <button type="button" class="nav-btn" id="tabPrisoner">囚犯信息</button>
+  <button type="button" class="nav-btn" id="tabSync">同步</button>
+</nav>
+
+<!-- 大图预览弹窗 -->
+<div class="modal" id="modal">
+  <img id="modalImg" alt="打卡大图">
+</div>
+
+<script>
+/* ============================================================
+   本地存储数据结构（与 login.html / admin.html 完全一致）：
+   - checkin_users   : [{username(囚号), password, role, name, treatment,
+                         prisonArea, crime, avatar, createTime}]
+   - checkin_records : [{id, username, image, lat, lng, address, time}]
+   - checkin_session : {username, role, loginTime}
+   - checkin_cooldown_<囚号> : 打卡冷却截止时间戳（毫秒）
+   说明：兼容旧数据——旧记录没有 address 字段时显示"未记录地址"
+   ============================================================ */
+(function () {
+  'use strict';
+
+  const LS = { users: 'checkin_users', records: 'checkin_records', session: 'checkin_session' };
+  const $ = id => document.getElementById(id);
+  /* 系统徽章：无头像囚犯默认头像 + 顶栏标识 */
+  const BADGE = 'data:image/jpeg;base64,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';
+  /* 打卡冷却时长：1 分钟 */
+  const COOLDOWN_MS = 60 * 1000;
+
+  /* ---------- 通用工具函数 ---------- */
+  function getUsers() {
+    try { return JSON.parse(localStorage.getItem(LS.users) || '[]'); }
+    catch (e) { return []; }
+  }
+  function getRecords() {
+    try { return JSON.parse(localStorage.getItem(LS.records) || '[]'); }
+    catch (e) { return []; }
+  }
+  function getSession() {
+    try { return JSON.parse(localStorage.getItem(LS.session) || 'null'); }
+    catch (e) { return null; }
+  }
+  function saveRecords(list) { localStorage.setItem(LS.records, JSON.stringify(list)); }
+  function nowStr() {
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' +
+           p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+  /* 字段缺省显示：旧数据缺少新字段时显示 "-" */
+  function fieldOf(obj, key) {
+    return (obj && obj[key] !== undefined && obj[key] !== null && String(obj[key]).trim() !== '')
+      ? String(obj[key]) : '-';
+  }
+
+  /* ---------- 会话校验：未登录或囚号已被管理员删除则回登录页 ---------- */
+  const session = getSession();
+  if (!session || !getUsers().some(u => u.username === session.username)) {
+    localStorage.removeItem(LS.session);
+    window.location.replace('login.html');
+    return;  // 后面的代码不再执行
+  }
+  const currentUser = session.username;
+
+  /* ============================================================
+     囚犯信息页数据（只读展示，管理员后台录入）
+     ============================================================ */
+  const me = getUsers().find(u => u.username === currentUser) || {};
+  $('badgeSm').src = BADGE;
+  $('welcomeName').textContent = currentUser;
+  $('profileAvatar').src = me.avatar && String(me.avatar).trim() ? me.avatar : BADGE;
+  $('pfName').textContent = fieldOf(me, 'name');
+  $('pfUsername').textContent = currentUser;
+  $('pfTreatment').textContent = fieldOf(me, 'treatment');
+  $('pfPrisonArea').textContent = fieldOf(me, 'prisonArea');
+  $('pfCrime').textContent = fieldOf(me, 'crime');
+
+  /* ---------- 打卡流程状态 ---------- */
+  let pendingLoc = null;  // 等待选图的定位数据 {lat, lng, address}
+
+  /* ============================================================
+     压缩图片：最长边 maxSide px，JPEG 质量 0.72
+     ============================================================ */
+  function compressImage(file, maxSide) {
+    return new Promise(function (resolve, reject) {
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const img = new Image();
+        img.onload = function () {
+          const MAX = maxSide || 720;
+          let w = img.width, h = img.height;
+          if (w > h && w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+          else if (h >= w && h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.68));
+        };
+        img.onerror = function () { reject(new Error('图片加载失败')); };
+        img.src = e.target.result;
+      };
+      reader.onerror = function () { reject(new Error('文件读取失败')); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  /* ============================================================
+     逆地址解析：经纬度 → 详细中文地址
+     优先 BigDataCloud（免费、无需Key、可返回中文），失败兜底 Nominatim
+     ============================================================ */
+  async function reverseGeocode(latNum, lngNum) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 8000);
+      const url = 'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' + latNum +
+                  '&longitude=' + lngNum + '&localityLanguage=zh';
+      const resp = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (!resp.ok) throw new Error('http ' + resp.status);
+      const d = await resp.json();
+      const addr = buildAddress(d);
+      if (addr) return addr;
+    } catch (e) { /* 继续尝试下一个服务 */ }
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 8000);
+      const url = 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' + latNum +
+                  '&lon=' + lngNum + '&accept-language=zh-CN,zh';
+      const resp = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (!resp.ok) throw new Error('http ' + resp.status);
+      const d = await resp.json();
+      if (d && d.display_name) {
+        return String(d.display_name).replace(/,\s*中国\s*$/, '');
+      }
+    } catch (e) { /* 两个服务都失败 */ }
+    return null;
+  }
+
+  function buildAddress(d) {
+    if (!d || typeof d !== 'object') return null;
+    const parts = [];
+    const seen = {};
+    const push = s => {
+      s = String(s || '').trim();
+      if (s && !seen[s]) { parts.push(s); seen[s] = 1; }
+    };
+    if (d.principalSubdivision) push(d.principalSubdivision);
+    if (d.city && d.city !== d.principalSubdivision) push(d.city);
+    if (d.locality && d.locality !== d.city) push(d.locality);
+    if (d.localityInfo && d.localityInfo.administrative) {
+      for (const a of d.localityInfo.administrative) {
+        if (a && a.description &&
+            /street|road|suburb|town|village|neighbourhood|hamlet|district/i.test(a.description)) {
+          push(a.name);
+        }
+      }
+    }
+    return parts.length ? parts.join('') : null;
+  }
+
+  /* ============================================================
+     获取定位（经纬度 + 逆地址解析详细中文地址）
+     成功返回 {lat, lng, address}，失败返回 null
+     ============================================================ */
+  function obtainLocation() {
+    return new Promise(function (resolve) {
+      if (!navigator.geolocation) { resolve(null); return; }
+      navigator.geolocation.getCurrentPosition(async function (pos) {
+        const lat = pos.coords.latitude.toFixed(6);
+        const lng = pos.coords.longitude.toFixed(6);
+        const addr = await reverseGeocode(lat, lng);
+        resolve({ lat: lat, lng: lng, address: addr || '' });
+      }, function () {
+        resolve(null);  // 定位失败（拒绝权限 / 不可用 / 超时）
+      }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+    });
+  }
+
+  /* ============================================================
+     打卡冷却控制：成功打卡后 1 分钟内不允许再次打卡
+     冷却时间写入 localStorage，刷新页面后依然生效
+     ============================================================ */
+  const cooldownKey = 'checkin_cooldown_' + currentUser;
+  const bigBtn = $('bigBtn');
+  const countdownEl = $('countdown');
+
+  function inCooldown() {
+    const until = parseInt(localStorage.getItem(cooldownKey) || '0', 10);
+    return until - Date.now() > 0;
+  }
+
+  /* 每秒刷新按钮状态：冷却中 → 绿色【已打卡】+ 倒计时；否则红色【打卡】 */
+  function updateBigBtn() {
+    const until = parseInt(localStorage.getItem(cooldownKey) || '0', 10);
+    const remain = until - Date.now();
+    if (remain > 0) {
+      bigBtn.disabled = true;
+      bigBtn.classList.add('done');
+      bigBtn.textContent = '【已打卡】';
+      countdownEl.textContent = '已打卡，' + Math.ceil(remain / 1000) + ' 秒后可再次打卡';
+    } else {
+      bigBtn.disabled = false;
+      bigBtn.classList.remove('done');
+      bigBtn.textContent = '【打卡】';
+      countdownEl.textContent = '';
+    }
+  }
+  setInterval(updateBigBtn, 1000);
+  updateBigBtn();
+
+  function setStatus(text, isError) {
+    const el = $('checkinStatus');
+    el.textContent = text || '';
+    el.className = 'checkin-status' + (isError ? ' error' : '');
+  }
+
+  /* ============================================================
+     超大打卡按钮主流程：
+     点击 → 自动定位 → 唤起图片选择 → 选图后自动保存打卡
+     ============================================================ */
+  bigBtn.addEventListener('click', async function () {
+    if (inCooldown()) { setStatus('冷却时间内，请稍后再打卡', true); return; }
+    setStatus('正在获取定位…');
+    const loc = await obtainLocation();
+    if (!loc) {
+      // 定位失败：显示手动兜底，由囚犯手动填写后继续
+      pendingLoc = null;
+      setStatus('定位失败（可能未授权/无定位服务），请手动填写经纬度与地址后继续', true);
+      $('manualWrap').style.display = 'flex';
+      return;
+    }
+    if (loc.address) {
+      setStatus('定位成功：' + loc.address + '\n请选择或拍摄打卡图片…');
+    } else {
+      setStatus('定位成功但地址解析失败，请手动补充详细地址\n请选择或拍摄打卡图片…', true);
+      $('manualWrap').style.display = 'flex';
+    }
+    pendingLoc = loc;
+    $('imageInput').click();  // 唤起图片选择（拍照 / 相册 / 本地）
+  });
+
+  /* 手动定位兜底：填写经纬度与地址后继续打卡 */
+  $('manualContinueBtn').addEventListener('click', async function () {
+    const mLat = $('manualLat').value.trim();
+    const mLng = $('manualLng').value.trim();
+    const mAddr = $('manualAddr').value.trim();
+    if (!/^-?\d{1,3}(\.\d+)?$/.test(mLat) || !/^-?\d{1,3}(\.\d+)?$/.test(mLng)) {
+      alert('经纬度格式不正确，请输入数字，例如：纬度 39.9042 / 经度 116.4074');
+      return;
+    }
+    setStatus('正在解析详细地址…');
+    const lat = Number(mLat).toFixed(6);
+    const lng = Number(mLng).toFixed(6);
+    const addr = await reverseGeocode(lat, lng);
+    const address = (addr || mAddr || '').trim();
+    if (!address) { alert('请填写详细地址（解析失败时需手动填写）'); return; }
+    pendingLoc = { lat: lat, lng: lng, address: address };
+    setStatus('定位成功：' + address + '\n请选择或拍摄打卡图片…');
+    $('imageInput').click();
+  });
+
+  /* 选图后自动完成打卡 */
+  $('imageInput').addEventListener('change', function () {
+    const file = this.files && this.files[0];
+    this.value = '';  // 允许连续选择同一张图片
+    if (!file) { setStatus('已取消选择图片', true); return; }
+    if (!pendingLoc) { setStatus('请先点击【打卡】按钮获取定位', true); return; }
+    if (!/^image\//.test(file.type)) { alert('请选择图片文件'); return; }
+    if (file.size > 15 * 1024 * 1024) { alert('图片过大，请选择 15MB 以内的图片'); return; }
+
+    setStatus('正在压缩图片并提交打卡…');
+    compressImage(file, 720).then(function (dataUrl) {
+      const loc = pendingLoc;
+      pendingLoc = null;
+
+      const rec = {
+        id: 'r' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+        username: currentUser,
+        image: dataUrl,
+        lat: loc.lat,
+        lng: loc.lng,
+        address: loc.address,
+        time: nowStr()
+      };
+      const records = getRecords();
+      records.unshift(rec);
+      try {
+        saveRecords(records);
+      } catch (e) {
+        alert('本地存储空间不足，打卡保存失败。请清理浏览器缓存 / 历史打卡后重试。');
+        setStatus('打卡失败：本地存储空间不足', true);
+        return;
+      }
+
+      // 设置 1 分钟冷却，按钮变绿【已打卡】
+      localStorage.setItem(cooldownKey, String(Date.now() + COOLDOWN_MS));
+      $('manualWrap').style.display = 'none';
+      setStatus('打卡成功！');
+      updateBigBtn();
+      renderHistory();
+      alert('打卡成功！1 分钟内不可重复打卡。');
+
+      // 【离线存储 + 自动同步】打卡记录进入离线缓存队列；
+      // 若已配置管理端则后台自动上传，失败则留在本地等待下次同步
+      pushToSyncQueue(rec);
+      tryAutoSync();
+    }).catch(function () {
+      setStatus('图片处理失败，请重试', true);
+    });
+  });
+
+  /* ============================================================
+     打卡记录查看（卡片式，顶部图片为该次打卡标识图）
+     ============================================================ */
+  function renderHistory() {
+    const mine = getRecords().filter(r => r.username === currentUser);
+    const list = $('historyList');
+    if (mine.length === 0) {
+      list.innerHTML = '';
+      $('emptyTip').style.display = 'block';
+      return;
+    }
+    $('emptyTip').style.display = 'none';
+    let html = '';
+    mine.forEach(function (r, i) {
+      const addr = (r.address && String(r.address).trim()) ? r.address : '未记录地址';
+      html +=
+        '<div class="record-card">' +
+          '<img class="record-img" src="' + r.image + '" alt="第 ' + (i + 1) + ' 次打卡图片" onclick="viewImage(this.src)">' +
+          '<div class="record-meta">' +
+            '<p class="rc-time"><b>打卡时间：</b>' + esc(r.time) + '</p>' +
+            '<p class="rc-addr"><b>详细地址：</b>' + esc(addr) + '</p>' +
+            '<p class="rc-loc"><b>经纬度：</b>经度 ' + esc(r.lng) + ' / 纬度 ' + esc(r.lat) + '</p>' +
+          '</div>' +
+        '</div>';
+    });
+    list.innerHTML = html;
+  }
+
+  /* ============================================================
+     底部切换按钮：【打卡】 / 【囚犯信息】 / 【同步】
+     ============================================================ */
+  function switchTab(which) {
+    $('viewCheckin').style.display = which === 'checkin' ? 'block' : 'none';
+    $('viewPrisoner').style.display = which === 'prisoner' ? 'block' : 'none';
+    $('viewSync').style.display = which === 'sync' ? 'block' : 'none';
+    $('tabCheckin').classList.toggle('active', which === 'checkin');
+    $('tabPrisoner').classList.toggle('active', which === 'prisoner');
+    $('tabSync').classList.toggle('active', which === 'sync');
+    if (which === 'prisoner') refreshPrisonerLocation();  // 进入囚犯信息页时刷新定位
+  }
+  $('tabCheckin').addEventListener('click', function () { switchTab('checkin'); });
+  $('tabPrisoner').addEventListener('click', function () { switchTab('prisoner'); });
+  $('tabSync').addEventListener('click', function () { switchTab('sync'); });
+
+  /* ============================================================
+     囚犯信息页：实时显示当前设备时间
+     ============================================================ */
+  function tickClock() {
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    const week = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
+    $('liveClock').textContent = nowStr() + '  星期' + week;
+  }
+  setInterval(tickClock, 1000);
+  tickClock();
+
+  /* ============================================================
+     囚犯信息页：当前详细定位地点（实时刷新）
+     ============================================================ */
+  function refreshPrisonerLocation() {
+    const box = $('locBox2');
+    box.className = 'loc-box';
+    if (!navigator.geolocation) {
+      box.textContent = '当前浏览器不支持定位';
+      return;
+    }
+    box.textContent = '正在获取当前定位…';
+    navigator.geolocation.getCurrentPosition(async function (pos) {
+      const lat = pos.coords.latitude.toFixed(6);
+      const lng = pos.coords.longitude.toFixed(6);
+      const addr = await reverseGeocode(lat, lng);
+      box.textContent = '详细地址：' + (addr || '解析失败（可点击下方刷新重试）') +
+                        '\n经纬度：' + lng + ' / ' + lat +
+                        '\n获取时间：' + nowStr();
+    }, function (err) {
+      let reason = '';
+      if (err.code === 1) reason = '您拒绝了定位权限，请在浏览器地址栏允许位置访问';
+      else if (err.code === 2) reason = '定位不可用，请开启设备定位服务';
+      else if (err.code === 3) reason = '定位超时，请重试';
+      else reason = '定位失败';
+      box.className = 'loc-box error';
+      box.textContent = reason + '（可点击下方"刷新定位"重试）';
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+  }
+  $('refreshLocBtn').addEventListener('click', refreshPrisonerLocation);
+
+  /* 大图预览弹窗 */
+  window.viewImage = function (src) {
+    $('modalImg').src = src;
+    $('modal').style.display = 'flex';
+  };
+  $('modal').addEventListener('click', function () { this.style.display = 'none'; });
+
+  /* ============================================================
+     【离线存储模块】离线缓存队列
+     打卡成功后，除写入本地历史记录外，还会进入同步队列；
+     未连接管理端时数据只在本机（图片、定位、囚犯信息、时间），
+     连接成功后上传并清空本地离线缓存。
+     ============================================================ */
+  const SYNC_LS = {
+    queue: 'checkin_sync_queue',      // 待上传的离线打卡记录
+    synced: 'checkin_synced_ids',     // 已同步成功的记录 id（避免重复上传）
+    server: 'checkin_server',         // 管理端局域网地址
+    log: 'checkin_sync_log'           // 同步日志（本地保留）
+  };
+
+  function getSyncQueue()   { try { return JSON.parse(localStorage.getItem(SYNC_LS.queue) || '[]'); } catch (e) { return []; } }
+  function saveSyncQueue(q) { localStorage.setItem(SYNC_LS.queue, JSON.stringify(q)); }
+  function getSyncedIds()   { try { return JSON.parse(localStorage.getItem(SYNC_LS.synced) || '[]'); } catch (e) { return []; } }
+  function saveSyncedIds(a) { localStorage.setItem(SYNC_LS.synced, JSON.stringify(a)); }
+  function getServerAddr()  { return (localStorage.getItem(SYNC_LS.server) || '').trim(); }
+
+  /* 打卡成功后进入离线缓存队列（幂等：同 id 不重复入队） */
+  function pushToSyncQueue(record) {
+    const q = getSyncQueue();
+    if (!q.some(r => r.id === record.id)) {
+      q.unshift(record);
+      saveSyncQueue(q);
+    }
+    updatePendingTip();
+  }
+  function updatePendingTip() {
+    $('pendingTip').textContent = '离线缓存：' + getSyncQueue().length + ' 条待上传';
+  }
+
+  /* 同步日志（带时间戳，滚动到底部） */
+  function syncLog(msg, type) {
+    const box = $('syncLog');
+    const tag = type === 'ok' ? '<span class="ok">[成功]</span>'
+              : type === 'err' ? '<span class="err">[失败]</span>'
+              : '<span class="t">[系统]</span>';
+    box.innerHTML += '<div>' + tag + ' ' + esc(nowStr()) + ' ' + esc(msg) + '</div>';
+    box.scrollTop = box.scrollHeight;
+    try { localStorage.setItem(SYNC_LS.log, box.innerHTML); } catch (e) {}
+  }
+  function setSyncStat(text, cls) {
+    const el = $('syncStat');
+    el.textContent = text;
+    el.className = 'sync-stat' + (cls ? ' ' + cls : '');
+  }
+
+  /* ============================================================
+     【局域网通信模块】管理端 EXE 开启本地 Web 服务
+     用户端输入管理端 IP 一键连接，POST 上传打卡数据（含压缩图片）
+     ============================================================ */
+  function normalizeAddr(raw) {
+    let a = (raw || '').trim().replace(/\/+$/, '');
+    if (!a) return '';
+    if (!/^https?:\/\//i.test(a)) a = 'http://' + a;
+    return a;
+  }
+  /* fetch 超时包装（局域网连接失败快速反馈） */
+  function fetchTimeout(url, options, ms) {
+    return new Promise(function (resolve, reject) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(function () { ctrl.abort(); reject(new Error('连接超时')); }, ms || 8000);
+      fetch(url, Object.assign({}, options, { signal: ctrl.signal }))
+        .then(function (r) { clearTimeout(timer); resolve(r); })
+        .catch(function (e) { clearTimeout(timer); reject(e); });
+    });
+  }
+
+  /* 一键连接：健康检查 + 保存地址 + 自动同步 */
+  $('connectLanBtn').addEventListener('click', async function () {
+    const addr = normalizeAddr($('serverAddr').value);
+    if (!addr) { setSyncStat('请先填写管理端地址，如 http://192.168.1.100:8090', 'err'); return; }
+    const btn = $('connectLanBtn');
+    btn.disabled = true;
+    btn.textContent = '连接中…';
+    setSyncStat('正在连接管理端 ' + addr + ' …');
+    try {
+      const r = await fetchTimeout(addr + '/api/health', { method: 'GET' }, 8000);
+      const data = await r.json();
+      if (!r.ok || !data || !data.ok) throw new Error('服务响应异常');
+      localStorage.setItem(SYNC_LS.server, addr);
+      setSyncStat('已连接管理端：' + addr + '（服务：' + (data.name || 'checkin-admin') + '）', 'ok');
+      syncLog('局域网连接成功：' + addr, 'ok');
+      syncAll();  // 连接成功后自动上传离线缓存
+    } catch (e) {
+      setSyncStat('连接失败：' + e.message + '。请确认管理端 EXE 已开启且与本机在同一局域网。', 'err');
+      syncLog('局域网连接失败：' + e.message, 'err');
+    }
+    btn.disabled = false;
+    btn.textContent = '一键连接';
+  });
+
+  /* 通过局域网上传离线缓存（自动校验去重，避免重复上传） */
+  async function syncViaLAN() {
+    const addr = getServerAddr();
+    const queue = getSyncQueue();
+    if (!addr) return '未配置管理端地址（请先在【局域网】中一键连接）';
+    if (queue.length === 0) return '无离线缓存需要上传';
+
+    const synced = getSyncedIds();
+    const pending = queue.filter(r => !synced.includes(r.id));  // 跳过已上传过的记录
+    if (pending.length === 0) { saveSyncQueue([]); updatePendingTip(); return '离线缓存已全部上传过，本地缓存已清空'; }
+
+    setSyncStat('正在上传 ' + pending.length + ' 条离线打卡记录…');
+    const r = await fetchTimeout(addr + '/api/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: 'user', records: pending })
+    }, 30000);
+    const data = await r.json();
+    if (!r.ok || !data || !data.ok) throw new Error('服务端返回异常');
+
+    const accepted = data.accepted || [];
+    const skipped = data.skipped || [];
+    // 服务端已接收/已存在：从离线缓存移除，并记入已同步集合
+    saveSyncQueue(queue.filter(r => !accepted.includes(r.id) && !skipped.includes(r.id)));
+    saveSyncedIds(Array.from(new Set(synced.concat(accepted, skipped))));
+    updatePendingTip();
+    return '上传成功：新增 ' + accepted.length + ' 条，服务端已存在 ' + skipped.length + ' 条（自动去重）';
+  }
+
+  /* ============================================================
+     【同步模块】统一同步入口 + 自动同步（加载/连接/打卡后触发）
+     ============================================================ */
+  let syncRunning = false;
+  async function syncAll() {
+    if (syncRunning) return;
+    syncRunning = true;
+    try {
+      // 统一走局域网通道（本版本已移除蓝牙，仅保留局域网同步）
+      const msg = await syncViaLAN();
+      if (msg && msg !== '无离线缓存需要上传') { setSyncStat(msg, 'ok'); syncLog(msg, 'ok'); }
+      else if (msg) { setSyncStat(msg, ''); }
+    } catch (e) {
+      setSyncStat('同步失败：' + e.message + '（数据仍保留在离线缓存，不会丢失）', 'err');
+      syncLog('同步失败：' + e.message, 'err');
+    }
+    syncRunning = false;
+  }
+  $('syncNowBtn').addEventListener('click', function () { syncAll(); });
+
+  /* 打卡成功后自动尝试同步（不阻塞打卡流程） */
+  function tryAutoSync() {
+    if (getServerAddr()) syncAll();
+  }
+  /* 定时自动同步：每 30 秒尝试一次（仅配置过管理端地址时） */
+  setInterval(function () {
+    if (getServerAddr()) syncAll();
+  }, 30 * 1000);
+
+  /* ============================================================
+     【同步说明】本版本已移除蓝牙通信模块（不再依赖需要 C++
+     编译的原生蓝牙包），离线打卡记录统一通过局域网 HTTP 上传，
+     实现见上方 syncViaLAN / syncAll / tryAutoSync。
+     ============================================================ */
+
+  /* ---------- 退出登录 ---------- */
+  $('logoutBtn').addEventListener('click', function () {
+    if (!confirm('确定退出登录吗？')) return;
+    localStorage.removeItem(LS.session);
+    window.location.replace('login.html');
+  });
+
+  /* 页面加载时渲染一次打卡记录 */
+  renderHistory();
+
+  /* 同步页初始化：恢复上次配置与日志，支持 #sync 直达 */
+  $('serverAddr').value = getServerAddr();
+  $('syncLog').innerHTML = localStorage.getItem(SYNC_LS.log) || '';
+  updatePendingTip();
+  if (location.hash === '#sync') switchTab('sync');
+  /* 页面加载后若已配置管理端，自动尝试同步离线缓存 */
+  if (getServerAddr()) {
+    syncLog('页面已加载，自动尝试同步离线缓存…');
+    syncAll();
+  }
+})();
+
+/* ---------- PWA 离线支持：注册 Service Worker ---------- */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('./service-worker.js').catch(function (e) {
+      console.warn('Service Worker 注册失败（PWA 离线缓存不可用）：', e);
+    });
+  });
+}
+</script>
+
+<!-- ============================================================
+     使用步骤（用户端 v6）：
+     1. 管理员创建囚犯账号后，囚犯在登录页用【囚号 + 密码】登录进入本页；
+     2. 默认显示【打卡】页：点击超大红色【打卡】按钮 → 自动定位（经纬度
+        + 详细中文地址）→ 自动弹出图片选择（可拍照或选本地图片）→
+        选择后自动完成打卡；成功按钮变绿色【已打卡】，1 分钟内不可重复打卡；
+     3. 底部点击【囚犯信息】切换页面：展示囚犯头像、姓名、囚号、待遇、
+        监区、罪名（只读），并实时显示当前设备时间与当前详细定位地点，
+        可点击【刷新定位】重新获取；
+     4. 底部点击【同步】进入离线与同步页：
+        - 未连接管理端时，打卡记录自动保存在本机离线缓存（离线模式）；
+        - 输入管理端 EXE 显示的局域网地址（如 http://192.168.1.100:8090），
+          点击【一键连接】，成功后自动上传离线缓存并清空
+          （本版本仅保留局域网同步，已移除蓝牙通道）；
+        - 同步自动校验去重（按记录 id），避免重复上传；同步过程有
+          加载提示与成功/失败日志；
+     5. 打卡页下方为本人打卡记录（卡片式，顶部图片为本次打卡标识图），
+        点击图片可放大；
+     6. 右上角【退出登录】返回登录页。
+     备注：本页为 PWA（配 manifest.json / service-worker.js / 图标），
+     支持"添加到主屏幕"离线使用；定位失败时会出现手动填写经纬度与
+     详细地址的兜底框，填写后点击"使用手动定位并继续打卡"即可继续打卡。
+     ============================================================ -->
+</body>
+</html>
