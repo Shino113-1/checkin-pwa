@@ -938,19 +938,19 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
     renderProfile();
   });
 
-  /* 扫码连接（cordova-plugin-qrscanner，仅 APP 内可用） */
+  /* 扫码连接（cordova-plugin-barcodescanner，APP 内可用；iOS/Android 均兼容） */
   $('scanBtn').addEventListener('click', function () {
-    if (typeof QRScanner === 'undefined') {
-      alert('当前环境不支持扫码（请在安卓 APP 中使用）。也可用手机相机扫描管理端二维码打开网页后自动配置连接。');
+    const scanner = (window.cordova && cordova.plugins && cordova.plugins.barcodescanner) || null;
+    if (!scanner) {
+      alert('当前环境不支持扫码（请在 APP 中使用）。也可用手机相机扫描管理端二维码打开网页后自动配置连接。');
       return;
     }
-    QRScanner.prepare(function (err, status) {
-      if (err) { alert('扫码初始化失败：' + (err.name || err.message || err)); return; }
-      if (!status.authorized) { alert('未获得相机权限，请在系统设置中开启'); return; }
-      QRScanner.scan(function (err2, text) {
-        QRScanner.hide(function () { /* 隐藏扫码界面 */ });
-        if (err2) { alert('扫码失败：' + (err2.name || err2.message || err2)); return; }
-        const m = /^(https?:\/\/[\w.-]+(:\d+)?)/.exec(String(text || '').trim());
+    scanner.scan(
+      function (result) {
+        if (!result || result.cancelled) return;          // 用户取消
+        const text = String(result.text || result.data || '').trim();
+        if (!text) { alert('未识别到二维码内容'); return; }
+        const m = /^(https?:\/\/[\w.-]+(:\d+)?)/.exec(text);
         if (!m) { alert('二维码内容不是有效的管理端地址'); return; }
         saveServer(m[1].replace(/\/+$/, ''));
         updateConnUI();
@@ -959,8 +959,12 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
           updateOfflineBar(); updateConnUI();
           if (online) { pullProfile(); syncQueue(); renderHistory(); }
         });
-      });
-    });
+      },
+      function (error) {
+        if (error && error.code === 5) return;            // 用户取消
+        alert('扫码失败：' + ((error && (error.message || error.code)) || error));
+      }
+    );
   });
 
   /* ============================================================

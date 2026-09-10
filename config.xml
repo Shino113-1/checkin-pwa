@@ -7,7 +7,7 @@
     cordova-plugin-dialogs        原生对话框（alert/confirm）
     cordova-plugin-file           本地文件能力（离线照片缓存备用）
     cordova-plugin-whitelist      网络白名单（允许访问局域网 HTTP）
-    cordova-plugin-qrscanner      扫码连接（连接管理端二维码）
+    cordova-plugin-barcodescanner  扫码连接（兼容 iOS/Android；原 qrscanner 在 iOS 新 SDK 编译失败已替换）
   离线本地存储：WebView 内置 localStorage（离线打卡队列 / 去重集合）
   局域网通信：fetch 管理端 http://IP:8090（需允许明文流量，见 android-usesCleartextTraffic） -->
 <widget id="com.checkin.user" version="6.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0" xmlns:android="http://schemas.android.com/apk/res/android">
@@ -38,6 +38,7 @@
   <preference name="AndroidPersistentFileLocation" value="Internal" />
   <preference name="BackgroundColor" value="#0d1f45" />
   <preference name="android-usesCleartextTraffic" value="true" />  <!-- 允许明文 HTTP，局域网管理端 :8090 -->
+  <preference name="deployment-target" value="13.0" />             <!-- iOS 最低版本（避免 Xcode 26 部署目标警告） -->
 
   <!-- 插件声明（cordova prepare/build 时自动安装） -->
   <plugin name="cordova-plugin-geolocation" spec="^5.0.0" />
@@ -45,7 +46,7 @@
   <plugin name="cordova-plugin-file" spec="^8.1.2" />
   <plugin name="cordova-plugin-whitelist" spec="^1.3.5" />
   <plugin name="cordova-plugin-camera" spec="^8.0.0" />
-  <plugin name="cordova-plugin-qrscanner" spec="^3.0.1" />
+  <plugin name="cordova-plugin-barcodescanner" spec="^0.7.4" />
 
   <!-- 安卓平台专属配置 -->
   <platform name="android">
