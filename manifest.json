@@ -1,0 +1,19 @@
+{
+  "name": "打卡系统",
+  "short_name": "打卡系统",
+  "description": "打卡系统：登录后离线打卡（断网自动存 IndexedDB）、网络恢复自动同步到电脑端",
+  "start_url": "login.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a2b5c",
+  "theme_color": "#1a2b5c",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
