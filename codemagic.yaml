@@ -30,22 +30,24 @@ workflows:
       - name: 添加 iOS 平台
         script: |
           cordova platform add ios@^7.0.0
-      - name: 构建 iOS 应用（关闭代码签名）
+      - name: 构建归档（xcodebuild 直跑，关闭代码签名）
         script: |
-          cordova build ios --device \
-            --buildFlag="CODE_SIGNING_ALLOWED=NO" \
-            --buildFlag="CODE_SIGNING_REQUIRED=NO"
-      - name: 打包为未签名 ipa
+          cd platforms/ios
+          xcodebuild -workspace 电子点名.xcworkspace -scheme 电子点名 \
+            -configuration Debug -destination 'generic/platform=iOS' \
+            -archivePath 电子点名.xcarchive archive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+          cd ../..
+      - name: 打包为未签名 ipa（绕开 exportArchive 的签名团队检查）
         script: |
-          cd platforms/ios/build/device
-          ls -la
+          cd platforms/ios
           mkdir -p Payload
-          cp -R "电子点名.app" Payload/
+          cp -R "电子点名.xcarchive/Products/Applications/电子点名.app" Payload/
           zip -qry unsigned-checkin-user.ipa Payload
-          cd -
-          ls -la platforms/ios/build/device/
+          cd ../..
+          ls -la platforms/ios/unsigned-checkin-user.ipa
     artifacts:
-      - platforms/ios/build/device/*.ipa
+      - platforms/ios/unsigned-checkin-user.ipa
     publishing:
       email:
         recipients:
