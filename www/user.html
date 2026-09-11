@@ -641,41 +641,21 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
       reader.readAsDataURL(file);
     });
   }
-  /* 强制相机拍照：APP 内优先原生相机（cordova-plugin-camera，sourceType=CAMERA 只允许相机）；
-     浏览器/PWA 回退 file input capture=camera */
+  /* 拍照/选图：必须由用户手势【同步】触发（iOS 限制：异步调用 file input 的 click 会被静默拦截，
+     导致相机无法弹出）。本函数在同步调用链中创建 input 并立即 click()；
+     定位等耗时操作由调用方与拍照并行进行。 */
   function capturePhoto() {
-    return new Promise(function (resolve, reject) {
-      if (typeof navigator !== 'undefined' && navigator.camera && navigator.camera.getPicture) {
-        navigator.camera.getPicture(function (dataUrl) {
-          resolve(dataUrl);
-        }, function (err) {
-          let msg = '相机调用失败';
-          if (err && err.code !== undefined) {
-            const names = { 1: '文件保存失败', 2: '无更新', 3: '设备不支持', 4: '参数错误', 20: '权限被拒绝或已取消拍照' };
-            msg += '（错误码 ' + err.code + (names[err.code] ? '：' + names[err.code] : '') + '）';
-            if (err.message) msg += ' ' + err.message;
-          }
-          reject(new Error(msg));
-        }, {
-          quality: 60,
-          destinationType: navigator.camera.DestinationType.DATA_URL,
-          sourceType: navigator.camera.PictureSourceType.CAMERA,
-          allowEdit: false,
-          encodingType: navigator.camera.EncodingType.JPEG,
-          targetWidth: 1080,
-          targetHeight: 1080,
-          correctOrientation: true,
-          saveToPhotoAlbum: false
-        });
-        return;
-      }
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      input.capture = 'camera';
-      input.style.display = 'none';
-      let settled = false;
-      const timer = setTimeout(function () { if (!settled) { settled = true; input.remove(); reject(new Error('拍照超时，请重试')); } }, 90000);
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'camera';
+    input.style.display = 'none';
+    let settled = false;
+    let timer = null;
+    const promise = new Promise(function (resolve, reject) {
+      timer = setTimeout(function () {
+        if (!settled) { settled = true; input.remove(); reject(new Error('拍照超时，请重试')); }
+      }, 90000);
       input.addEventListener('change', function () {
         if (settled) return;
         const file = input.files && input.files[0];
@@ -689,9 +669,14 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
         if (settled) return;
         clearTimeout(timer); settled = true; input.remove(); reject(new Error('已取消拍照'));
       });
-      document.body.appendChild(input);
-      input.click();
     });
+    /* 供调用方在中途失败（如定位失败）时中止并关闭选择器 */
+    promise.abort = function () {
+      if (!settled) { settled = true; if (timer) clearTimeout(timer); input.remove(); }
+    };
+    document.body.appendChild(input);
+    input.click(); /* 同步触发，必须在用户手势内 */
+    return promise;
   }
   function setStatus(text, isError) {
     const el = $('checkStatus');
@@ -749,7 +734,7 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
     });
   }
 
-  /* 提交打卡：选择类型（请求自慰 / 报告位置）→ 自动定位 → 直接相机拍照 → 解析地址 → 上传 */
+  /* 提交打卡：选择类型 → 【同步】调起相机（用户手势内）→ 并行定位 → 拍照完成后解析地址并上传 */
   async function doCheckin(statusType) {
     const kind = statusType === 'study' ? '自慰' : '正常';
     if (getCooldown() > 0) { updateCooldownUI(); return; }
@@ -757,13 +742,20 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
     btn.disabled = true;
     setStatus('正在获取定位…', false);
 
+    /* 同步调起相机/选图（iOS 必须在手势内，否则被静默拦截）；定位随后并行进行 */
+    const photoPromise = capturePhoto();
+
     let loc;
     try { loc = await getLocation(); }
-    catch (e) { setStatus(e.message + '（请在系统设置中开启定位权限）', true); btn.disabled = false; updateCooldownUI(); return; }
+    catch (e) {
+      if (photoPromise && photoPromise.abort) photoPromise.abort();
+      setStatus(e.message + '（请在系统设置中开启定位权限）', true);
+      btn.disabled = false; updateCooldownUI(); return;
+    }
 
     setStatus('请对准镜头拍照…', false);
     let photo = '';
-    try { photo = await capturePhoto(); }
+    try { photo = await photoPromise; }
     catch (e) { setStatus(e.message, true); btn.disabled = false; updateCooldownUI(); return; }
 
     setStatus('正在解析地址…', false);
