@@ -26,7 +26,6 @@
       "android"
     ],
     "plugins": {
-      "cordova-plugin-bluetooth-serial": {},
       "cordova-plugin-dialogs": {},
       "cordova-plugin-file": {
         "ANDROIDX_WEBKIT_VERSION": "1.4.0"

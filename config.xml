@@ -97,6 +97,10 @@
     <config-file target="*-Info.plist" parent="NSLocationWhenInUseUsageDescription">
       <string>用于打卡时获取当前位置</string>
     </config-file>
+    <!-- 蓝牙权限描述（cordova-ios 可能加载 CoreBluetooth，缺失会导致启动崩溃） -->
+    <config-file target="*-Info.plist" parent="NSBluetoothAlwaysUsageDescription">
+      <string>用于连接点名设备</string>
+    </config-file>
 
     <!-- iOS 图标（基于系统徽章生成，1024 主图标 + 各尺寸；App Store/TestFlight 需 1024 无透明通道） -->
     <icon src="www/icon-1024.png" width="1024" height="1024" />
