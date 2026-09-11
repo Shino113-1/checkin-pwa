@@ -263,6 +263,7 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
         <button type="button" class="btn" id="saveServerBtn">保存</button>
       </div>
       <button type="button" class="btn secondary" id="scanBtn" style="width:100%">扫码连接（需在 APP 内使用）</button>
+      <button type="button" class="btn secondary" id="autoSearchBtn" style="width:100%;margin-top:8px">自动搜索管理端（局域网）</button>
       <p class="muted" style="font-size:12px;margin-top:8px">二维码在管理端「局域网连接与数据接收」页面显示；浏览器/PWA 端请手动输入地址，或用手机相机扫描二维码打开后自动配置。</p>
     </div>
     <div class="card">
@@ -957,6 +958,58 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
         alert('扫码失败：' + ((error && (error.message || error.code)) || error));
       }
     );
+  });
+
+  /* 自动搜索管理端：并发扫描局域网常见网段的 8090 端口，找到后自动保存并连接（IP 变化时免手输） */
+  function scanSubnet(net, port) {
+    return new Promise(function (resolve) {
+      let next = 1;
+      const found = [];
+      const worker = function () {
+        return new Promise(function (res) {
+          (function step() {
+            if (next > 254) { res(); return; }
+            const i = next++;
+            const base = 'http://' + net + '.' + i + ':' + port;
+            const ctrl = new AbortController();
+            const t = setTimeout(function () { ctrl.abort(); }, 900);
+            fetch(base + '/api/ping', { signal: ctrl.signal }).then(function (r) {
+              clearTimeout(t);
+              if (r.ok) { found.push(base); }
+            }).catch(function () { clearTimeout(t); }).then(step);
+          })();
+        });
+      };
+      const workers = [];
+      for (let w = 0; w < 40; w++) workers.push(worker());
+      Promise.all(workers).then(function () { resolve(found); });
+    });
+  }
+  $('autoSearchBtn').addEventListener('click', async function () {
+    const btn = $('autoSearchBtn');
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '正在搜索管理端…（约 15 秒）';
+    const nets = ['192.168.0', '192.168.1'];
+    let found = [];
+    for (const net of nets) {
+      const hits = await scanSubnet(net, 8090);
+      if (hits.length) { found = found.concat(hits); break; }
+    }
+    if (!found.length) {
+      btn.disabled = false; btn.textContent = orig;
+      log('未搜索到管理端：请确认电脑已开机、管理端 EXE 正在运行、且手机与电脑连接同一路由器', 'err');
+      return;
+    }
+    const base = found[0];
+    saveServer(base);
+    updateConnUI();
+    log('已找到管理端 ' + base + (found.length > 1 ? '（另发现 ' + found.slice(1).join('、') + '）' : '') + '，正在连接…', 'ok');
+    await probe(3000);
+    updateOfflineBar(); updateConnUI();
+    if (online) { await pullProfile(); await syncQueue(); renderHistory(); }
+    else { log('地址已保存，但暂时连接失败，请稍后重试', 'err'); }
+    btn.disabled = false; btn.textContent = orig;
   });
 
   /* ============================================================
