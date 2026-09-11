@@ -30,11 +30,11 @@ workflows:
       - name: 添加 iOS 平台
         script: |
           cordova platform add ios@^7.0.0
-      - name: 构建归档（xcodebuild 直跑，关闭代码签名）
+      - name: 构建归档（xcodebuild 直跑，Release 模式，关闭代码签名）
         script: |
           cd platforms/ios
           xcodebuild -workspace 电子点名.xcworkspace -scheme 电子点名 \
-            -configuration Debug -destination 'generic/platform=iOS' \
+            -configuration Release -destination 'generic/platform=iOS' \
             -archivePath 电子点名.xcarchive archive \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
           cd ../..
