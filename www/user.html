@@ -14,31 +14,6 @@
     }
   })();
 </script>
-<script>
-  /* ============================================================
-     PWA 自动升级：注册 Service Worker（网络优先策略）
-     安装一次后，每次打开在线时自动加载最新版本，无需重新下载。
-     检测到新 SW 接管时自动刷新页面，让新版立即生效。
-     ============================================================ */
-  (function () {
-    if (!('serviceWorker' in navigator)) return;
-    window.addEventListener('load', function () {
-      navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' }).then(function (reg) {
-        /* 立即检查一次更新，确保冷启动也能拿到最新 SW */
-        if (reg && reg.update) reg.update().catch(function () { /* 离线忽略 */ });
-      }).catch(function () { /* 注册失败不影响正常使用 */ });
-
-      /* 新 SW 接管（skipWaiting 生效）后自动刷新，加载最新页面 */
-      var refreshing = false;
-      navigator.serviceWorker.addEventListener('controllerchange', function () {
-        if (refreshing) return;
-        refreshing = true;
-        try { if (window.alert) window.alert('检测到新版本(v10)，正在刷新…'); } catch (e) {}
-        window.location.reload();
-      });
-    });
-  })();
-</script>
 <style>
 /* ============================================================
    电子点名管理系统 v6.0 · 用户端（user.html）
@@ -288,6 +263,7 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
         <button type="button" class="btn" id="saveServerBtn">保存</button>
       </div>
       <button type="button" class="btn secondary" id="scanBtn" style="width:100%">扫码连接（需在 APP 内使用）</button>
+      <button type="button" class="btn secondary" id="autoSearchBtn" style="width:100%;margin-top:8px">自动搜索管理端（局域网）</button>
       <p class="muted" style="font-size:12px;margin-top:8px">二维码在管理端「局域网连接与数据接收」页面显示；浏览器/PWA 端请手动输入地址，或用手机相机扫描二维码打开后自动配置。</p>
     </div>
     <div class="card">
@@ -425,10 +401,10 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
   }
 
   async function syncQueue() {
-    if (!online) return { uploaded: 0, reason: 'offline' };
+    if (!online) return 0;
     const records = getLocalRecords();
     const pending = records.filter(r => r.sync_status === 0 && String(r.prisoner_id || r.username) === MY_ID);
-    if (pending.length === 0) { updateQueueCount(); return { uploaded: 0, reason: 'none' }; }
+    if (pending.length === 0) { updateQueueCount(); return 0; }
     try {
       const payload = pending.map(function (r) {
         return {
@@ -441,40 +417,22 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ records: payload })
-      }, 25000);
+      }, 15000);
       const accepted = data.accepted || [];
-      let marked = 0;
       if (accepted.length) {
         const okSet = new Set(accepted);
         setLocalRecords(records.map(r => okSet.has(r.record_id) ? Object.assign({}, r, { sync_status: 1 }) : r));
         log('已上传 ' + accepted.length + ' 条离线打卡记录', 'ok');
-        marked += accepted.length;
-      }
-      /* 服务端已有该记录（重复）：视为已上传，本地标记为已同步，避免永远显示“待上传” */
-      if (data.skipped && data.skipped.length) {
-        const dupIds = data.skipped.filter(id => (data.skippedReason || {})[id] === 'duplicate');
-        if (dupIds.length) {
-          const dupSet = new Set(dupIds);
-          setLocalRecords(records.map(r => dupSet.has(r.record_id) ? Object.assign({}, r, { sync_status: 1 }) : r));
-          log('已确认 ' + dupIds.length + ' 条记录已在管理端，状态更新为已同步', 'ok');
-          marked += dupIds.length;
-        }
-        const missIds = data.skipped.filter(id => (data.skippedReason || {})[id] === 'prisoner-not-found');
-        if (missIds.length) log('同步失败：囚号不存在或未在管理端登记，请先让管理员添加该囚号', 'err');
-        const otherIds = data.skipped.filter(id => (data.skippedReason || {})[id] !== 'duplicate' && (data.skippedReason || {})[id] !== 'prisoner-not-found');
-        if (otherIds.length) log('同步失败：服务端跳过 ' + otherIds.length + ' 条记录', 'err');
+        updateQueueCount();
+        return accepted.length;
       }
       if (data.cooldown && data.cooldown.length) {
         log('服务端冷却拦截 ' + data.cooldown.length + ' 条（剩余 ' + data.cooldown[0].remain + ' 秒）', 'err');
       }
-      updateQueueCount();
-      if (marked > 0) return { uploaded: marked, reason: 'ok' };
-      if (data.cooldown && data.cooldown.length) return { uploaded: 0, reason: 'cooldown' };
-      if (data.skipped && data.skipped.length) return { uploaded: 0, reason: 'skipped' };
-      return { uploaded: 0, reason: 'empty' };
+      return 0;
     } catch (e) {
       log('上传失败：' + e.message, 'err');
-      return { uploaded: 0, reason: 'error' };
+      return 0;
     }
   }
 
@@ -684,41 +642,21 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
       reader.readAsDataURL(file);
     });
   }
-  /* 强制相机拍照：APP 内优先原生相机（cordova-plugin-camera，sourceType=CAMERA 只允许相机）；
-     浏览器/PWA 回退 file input capture=camera */
+  /* 拍照/选图：必须由用户手势【同步】触发（iOS 限制：异步调用 file input 的 click 会被静默拦截，
+     导致相机无法弹出）。本函数在同步调用链中创建 input 并立即 click()；
+     定位等耗时操作由调用方与拍照并行进行。 */
   function capturePhoto() {
-    return new Promise(function (resolve, reject) {
-      if (typeof navigator !== 'undefined' && navigator.camera && navigator.camera.getPicture) {
-        navigator.camera.getPicture(function (dataUrl) {
-          resolve(dataUrl);
-        }, function (err) {
-          let msg = '相机调用失败';
-          if (err && err.code !== undefined) {
-            const names = { 1: '文件保存失败', 2: '无更新', 3: '设备不支持', 4: '参数错误', 20: '权限被拒绝或已取消拍照' };
-            msg += '（错误码 ' + err.code + (names[err.code] ? '：' + names[err.code] : '') + '）';
-            if (err.message) msg += ' ' + err.message;
-          }
-          reject(new Error(msg));
-        }, {
-          quality: 60,
-          destinationType: navigator.camera.DestinationType.DATA_URL,
-          sourceType: navigator.camera.PictureSourceType.CAMERA,
-          allowEdit: false,
-          encodingType: navigator.camera.EncodingType.JPEG,
-          targetWidth: 1080,
-          targetHeight: 1080,
-          correctOrientation: true,
-          saveToPhotoAlbum: false
-        });
-        return;
-      }
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      input.capture = 'camera';
-      input.style.display = 'none';
-      let settled = false;
-      const timer = setTimeout(function () { if (!settled) { settled = true; input.remove(); reject(new Error('拍照超时，请重试')); } }, 90000);
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.capture = 'camera';
+    input.style.display = 'none';
+    let settled = false;
+    let timer = null;
+    const promise = new Promise(function (resolve, reject) {
+      timer = setTimeout(function () {
+        if (!settled) { settled = true; input.remove(); reject(new Error('拍照超时，请重试')); }
+      }, 90000);
       input.addEventListener('change', function () {
         if (settled) return;
         const file = input.files && input.files[0];
@@ -732,9 +670,14 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
         if (settled) return;
         clearTimeout(timer); settled = true; input.remove(); reject(new Error('已取消拍照'));
       });
-      document.body.appendChild(input);
-      input.click();
     });
+    /* 供调用方在中途失败（如定位失败）时中止并关闭选择器 */
+    promise.abort = function () {
+      if (!settled) { settled = true; if (timer) clearTimeout(timer); input.remove(); }
+    };
+    document.body.appendChild(input);
+    input.click(); /* 同步触发，必须在用户手势内 */
+    return promise;
   }
   function setStatus(text, isError) {
     const el = $('checkStatus');
@@ -792,7 +735,7 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
     });
   }
 
-  /* 提交打卡：选择类型（请求自慰 / 报告位置）→ 自动定位 → 直接相机拍照 → 解析地址 → 上传 */
+  /* 提交打卡：选择类型 → 【同步】调起相机（用户手势内）→ 并行定位 → 拍照完成后解析地址并上传 */
   async function doCheckin(statusType) {
     const kind = statusType === 'study' ? '自慰' : '正常';
     if (getCooldown() > 0) { updateCooldownUI(); return; }
@@ -800,13 +743,20 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
     btn.disabled = true;
     setStatus('正在获取定位…', false);
 
+    /* 同步调起相机/选图（iOS 必须在手势内，否则被静默拦截）；定位随后并行进行 */
+    const photoPromise = capturePhoto();
+
     let loc;
     try { loc = await getLocation(); }
-    catch (e) { setStatus(e.message + '（请在系统设置中开启定位权限）', true); btn.disabled = false; updateCooldownUI(); return; }
+    catch (e) {
+      if (photoPromise && photoPromise.abort) photoPromise.abort();
+      setStatus(e.message + '（请在系统设置中开启定位权限）', true);
+      btn.disabled = false; updateCooldownUI(); return;
+    }
 
     setStatus('请对准镜头拍照…', false);
     let photo = '';
-    try { photo = await capturePhoto(); }
+    try { photo = await photoPromise; }
     catch (e) { setStatus(e.message, true); btn.disabled = false; updateCooldownUI(); return; }
 
     setStatus('正在解析地址…', false);
@@ -837,27 +787,13 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
           updateCooldownUI();
           return;
         }
-        // 服务端必须确认接受了本条记录才算同步成功（防止假成功）
-        const acceptedSet = new Set(data.accepted || []);
-        const skippedReason = (data.skippedReason || {})[record.record_id];
-        if (acceptedSet.has(record.record_id)) {
-          record.sync_status = 1;
-          await saveLocal(record);
-          setCooldown();
-          setStatus('已打卡（' + nowFull() + '，' + kind + '），' + Math.round(COOLDOWN_MS / 60000) + ' 分钟后可再次打卡', false);
-          btn.classList.add('done');
-          btn.textContent = '✓ 已打卡';
-          setTimeout(function () { btn.classList.remove('done'); updateCooldownUI(); }, 2000);
-        } else {
-          // 服务端未接受：转入本地队列待上传，明确提示原因
-          await saveLocal(record);
-          setCooldown();
-          if (skippedReason === 'prisoner-not-found') {
-            setStatus('打卡已保存到本机，但服务端未登记该囚号，请先让管理员添加「' + MY_ID + '」', true);
-          } else {
-            setStatus('服务端未接受本条记录，已保存在本机，联网后重新同步', true);
-          }
-        }
+        record.sync_status = 1;
+        await saveLocal(record);
+        setCooldown();
+        setStatus('已打卡（' + nowFull() + '，' + kind + '），' + Math.round(COOLDOWN_MS / 60000) + ' 分钟后可再次打卡', false);
+        btn.classList.add('done');
+        btn.textContent = '✓ 已打卡';
+        setTimeout(function () { btn.classList.remove('done'); updateCooldownUI(); }, 2000);
       } catch (e) {
         // 网络抖动：转入本地队列
         await saveLocal(record);
@@ -919,22 +855,6 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
         const d = await api('/api/records?token=' + encodeURIComponent(session.token));
         serverRecs = d.records || [];
       } catch (e) { /* 离线 */ }
-      // 自愈：本地标记「已同步」但服务端其实不存在的记录（早期版本假成功），
-      // 自动转回待上传队列，下次同步时补传
-      const serverIds = new Set(serverRecs.map(r => r.record_id || r.id));
-      const localAll = getLocalRecords();
-      let changed = false;
-      const fixed = localAll.map(function (r) {
-        if (r.sync_status === 1 && String(r.prisoner_id || r.username) === MY_ID && !serverIds.has(r.record_id)) {
-          changed = true;
-          return Object.assign({}, r, { sync_status: 0 });
-        }
-        return r;
-      });
-      if (changed) {
-        setLocalRecords(fixed);
-        log('检测到 ' + localAll.filter(function (r) { return r.sync_status === 1 && String(r.prisoner_id || r.username) === MY_ID && !serverIds.has(r.record_id); }).length + ' 条记录服务端未收到，已转为待上传，将自动补传', 'err');
-      }
     }
     const map = new Map();
     serverRecs.forEach(r => map.set(r.record_id || r.id, r));
@@ -987,8 +907,11 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
     probe().then(function () { updateOfflineBar(); updateConnUI(); });
   }
   $('saveServerBtn').addEventListener('click', async function () {
-    const val = $('serverInput').value.trim().replace(/\/+$/, '');
+    let val = $('serverInput').value.trim().replace(/\/+$/, '');
+    val = val.replace(/：/g, ':').replace(/。/g, '.').replace(/．/g, '.');
+    if (!/^https?:\/\//.test(val)) val = 'http://' + val;
     if (!/^https?:\/\/[\w.-]+(:\d+)?$/.test(val)) { alert('地址格式不正确，示例：http://192.168.1.100:8090'); return; }
+    $('serverInput').value = val;
     saveServer(val);
     await probe(3000);
     updateOfflineBar(); updateConnUI();
@@ -999,12 +922,8 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
     await probe();
     updateOfflineBar(); updateConnUI();
     if (!online) { log('未连接管理端，无法同步', 'err'); return; }
-    const r = await syncQueue();
-    /* 同步后立即刷新历史列表与队列计数，状态标签及时更新 */
-    await pullProfile();
-    await renderHistory();
-    updateQueueCount();
-    if (r.reason === 'none') log('没有待上传的离线记录', 'ok');
+    const n = await syncQueue();
+    if (n === 0) log('没有待上传的离线记录', 'ok');
   });
   $('pullBtn').addEventListener('click', async function () {
     await probe();
@@ -1015,19 +934,19 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
     renderProfile();
   });
 
-  /* 扫码连接（cordova-plugin-qrscanner，仅 APP 内可用） */
+  /* 扫码连接（cordova-plugin-barcodescanner，APP 内可用；iOS/Android 均兼容） */
   $('scanBtn').addEventListener('click', function () {
-    if (typeof QRScanner === 'undefined') {
-      alert('当前环境不支持扫码（请在安卓 APP 中使用）。也可用手机相机扫描管理端二维码打开网页后自动配置连接。');
+    const scanner = (window.cordova && cordova.plugins && cordova.plugins.barcodescanner) || null;
+    if (!scanner) {
+      alert('当前环境不支持扫码（请在 APP 中使用）。也可用手机相机扫描管理端二维码打开网页后自动配置连接。');
       return;
     }
-    QRScanner.prepare(function (err, status) {
-      if (err) { alert('扫码初始化失败：' + (err.name || err.message || err)); return; }
-      if (!status.authorized) { alert('未获得相机权限，请在系统设置中开启'); return; }
-      QRScanner.scan(function (err2, text) {
-        QRScanner.hide(function () { /* 隐藏扫码界面 */ });
-        if (err2) { alert('扫码失败：' + (err2.name || err2.message || err2)); return; }
-        const m = /^(https?:\/\/[\w.-]+(:\d+)?)/.exec(String(text || '').trim());
+    scanner.scan(
+      function (result) {
+        if (!result || result.cancelled) return;          // 用户取消
+        const text = String(result.text || result.data || '').trim();
+        if (!text) { alert('未识别到二维码内容'); return; }
+        const m = /^(https?:\/\/[\w.-]+(:\d+)?)/.exec(text);
         if (!m) { alert('二维码内容不是有效的管理端地址'); return; }
         saveServer(m[1].replace(/\/+$/, ''));
         updateConnUI();
@@ -1036,8 +955,64 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
           updateOfflineBar(); updateConnUI();
           if (online) { pullProfile(); syncQueue(); renderHistory(); }
         });
-      });
+      },
+      function (error) {
+        if (error && error.code === 5) return;            // 用户取消
+        alert('扫码失败：' + ((error && (error.message || error.code)) || error));
+      }
+    );
+  });
+
+  /* 自动搜索管理端：并发扫描局域网常见网段的 8090 端口，找到后自动保存并连接（IP 变化时免手输） */
+  function scanSubnet(net, port) {
+    return new Promise(function (resolve) {
+      let next = 1;
+      const found = [];
+      const worker = function () {
+        return new Promise(function (res) {
+          (function step() {
+            if (next > 254) { res(); return; }
+            const i = next++;
+            const base = 'http://' + net + '.' + i + ':' + port;
+            const ctrl = new AbortController();
+            const t = setTimeout(function () { ctrl.abort(); }, 900);
+            fetch(base + '/api/ping', { signal: ctrl.signal }).then(function (r) {
+              clearTimeout(t);
+              if (r.ok) { found.push(base); }
+            }).catch(function () { clearTimeout(t); }).then(step);
+          })();
+        });
+      };
+      const workers = [];
+      for (let w = 0; w < 40; w++) workers.push(worker());
+      Promise.all(workers).then(function () { resolve(found); });
     });
+  }
+  $('autoSearchBtn').addEventListener('click', async function () {
+    const btn = $('autoSearchBtn');
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '正在搜索管理端…（约 15 秒）';
+    const nets = ['192.168.0', '192.168.1'];
+    let found = [];
+    for (const net of nets) {
+      const hits = await scanSubnet(net, 8090);
+      if (hits.length) { found = found.concat(hits); break; }
+    }
+    if (!found.length) {
+      btn.disabled = false; btn.textContent = orig;
+      log('未搜索到管理端：请确认电脑已开机、管理端 EXE 正在运行、且手机与电脑连接同一路由器', 'err');
+      return;
+    }
+    const base = found[0];
+    saveServer(base);
+    updateConnUI();
+    log('已找到管理端 ' + base + (found.length > 1 ? '（另发现 ' + found.slice(1).join('、') + '）' : '') + '，正在连接…', 'ok');
+    await probe(3000);
+    updateOfflineBar(); updateConnUI();
+    if (online) { await pullProfile(); await syncQueue(); renderHistory(); }
+    else { log('地址已保存，但暂时连接失败，请稍后重试', 'err'); }
+    btn.disabled = false; btn.textContent = orig;
   });
 
   /* ============================================================

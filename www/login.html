@@ -6,7 +6,6 @@
 <title>电子点名管理系统 - 登录</title>
 <meta name="theme-color" content="#0d2b52">
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon-180.png">
 <script src="config.js"></script>
 <script>
   /* 仅在 Cordova APP 环境（https://localhost）加载 cordova.js，
@@ -15,27 +14,6 @@
     if (window.location.hostname === 'localhost') {
       document.write('<script src="cordova.js"><\/script>');
     }
-  })();
-</script>
-<script>
-  /* ============================================================
-     PWA 自动升级：注册 Service Worker（网络优先策略）
-     安装一次后，每次打开在线时自动加载最新版本，无需重新下载。
-     ============================================================ */
-  (function () {
-    if (!('serviceWorker' in navigator)) return;
-    window.addEventListener('load', function () {
-      navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' }).then(function (reg) {
-        if (reg && reg.update) reg.update().catch(function () { /* 离线忽略 */ });
-      }).catch(function () { /* 注册失败不影响正常使用 */ });
-      var refreshing = false;
-      navigator.serviceWorker.addEventListener('controllerchange', function () {
-        if (refreshing) return;
-        refreshing = true;
-        try { if (window.alert) window.alert('检测到新版本(v10)，正在刷新…'); } catch (e) {}
-        window.location.reload();
-      });
-    });
   })();
 </script>
 <style>
@@ -336,13 +314,16 @@ body{
   });
   document.getElementById('saveServerBtn').addEventListener('click', async function () {
     const input = document.getElementById('serverInput');
-    const val = input.value.trim().replace(/\/+$/, '');
+    let val = input.value.trim().replace(/\/+$/, '');
+    val = val.replace(/：/g, ':').replace(/。/g, '.').replace(/．/g, '.');
+    if (!/^https?:\/\//.test(val)) val = 'http://' + val;
     const msg = document.getElementById('netMsg');
     if (!/^https?:\/\/[\w.-]+(:\d+)?$/.test(val)) {
       msg.textContent = '地址格式不正确，示例：http://192.168.1.100:8090';
       msg.className = 'net-msg err';
       return;
     }
+    input.value = val;
     localStorage.setItem('checkin_server', val);
     msg.textContent = '正在检测连接…';
     msg.className = 'net-msg';
