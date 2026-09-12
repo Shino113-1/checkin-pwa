@@ -1,0 +1,1400 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>电子点名管理系统 - 管理端</title>
+<script src="config.js"></script>
+<script src="qrcode.min.js"></script>
+<link rel="stylesheet" href="lib/leaflet/leaflet.min.css">
+<script src="lib/leaflet/leaflet.min.js"></script>
+<!-- exceljs CDN（Excel 读写，支持图片直接嵌入/提取；导出导入时需要联网加载） -->
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<style>
+/* ============================================================
+   电子点名管理系统 v6.0 · 管理端（admin.html）
+   风格：公安深蓝主色 #0d2b52 / #1b4f8a / #2c5f9e，
+   顶部深蓝横幅（标志+系统名+时间）+ 上下黑白条纹（每段16px），
+   表格化布局（深蓝表头白字、斑马纹、细边框 #d9e2ec）
+   功能：囚犯管理 / 打卡记录管理（筛选）/ Excel 含图导入导出 /
+         局域网二维码连接 / 系统设置（改密码、高德 Key）
+   ============================================================ */
+:root{
+  --blue-deep:#0d2b52;
+  --blue-1:#1b4f8a;
+  --blue-2:#2c5f9e;
+  --bg:#f2f5f9;
+  --card:#ffffff;
+  --text:#333333;
+  --muted:#666666;
+  --border:#d9e2ec;
+  --red:#c0392b;
+  --ok:#27ae60;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:"Microsoft YaHei","PingFang SC","Source Han Sans SC","Segoe UI",Arial,sans-serif;
+  background:var(--bg);color:var(--text);min-height:100vh;padding-bottom:0;
+}
+/* ---- 顶部深蓝横幅（56px） ---- */
+.topbar{
+  height:56px;background:var(--blue-deep);color:#fff;
+  display:flex;align-items:center;justify-content:space-between;padding:0 22px;
+  position:sticky;top:0;z-index:900;
+}
+.topbar .brand{display:flex;align-items:center;font-size:18px;font-weight:700;letter-spacing:1px}
+.topbar .brand img{height:34px;width:34px;object-fit:cover;border-radius:50%;margin-right:10px;border:1px solid rgba(255,255,255,.55);background:#fff}
+.topbar .right{display:flex;align-items:center;gap:16px;font-size:13px;color:#cfe0ff}
+.topbar .right .welcome{color:#ffd87a}
+/* ---- 黑白条纹（每段16px） ---- */
+.stripes{height:16px;background:repeating-linear-gradient(to bottom,#111 0 16px,#fff 16px 32px)}
+/* ---- 主体 ---- */
+main{max-width:1180px;margin:20px auto 30px;padding:0 16px}
+.card{
+  background:var(--card);border:1px solid var(--border);border-radius:4px;
+  padding:22px 24px;margin-bottom:18px;box-shadow:0 1px 4px rgba(13,43,82,.06);
+}
+.card h2{
+  font-size:17px;color:var(--blue-deep);margin-bottom:6px;letter-spacing:1px;
+  display:flex;align-items:center;
+}
+.card h2::before{content:"";display:inline-block;width:4px;height:16px;background:var(--blue-deep);margin-right:8px}
+.hint{font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.8}
+
+/* ---- 按钮 ---- */
+.btn{
+  border:1px solid var(--blue-deep);border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;
+  background:var(--blue-deep);color:#fff;padding:8px 18px;transition:background .2s;letter-spacing:1px;
+}
+.btn:hover{background:var(--blue-1)}
+.btn-secondary{background:#fff;color:var(--blue-deep)}
+.btn-secondary:hover{background:#eef3fb}
+.btn-danger{background:var(--red);border-color:var(--red)}
+.btn-danger:hover{background:#a93226}
+.btn-ghost{background:#fff;color:var(--muted);border-color:#c3d0e0}
+.btn-ghost:hover{color:var(--blue-deep);border-color:var(--blue-deep)}
+.btn-sm{padding:4px 12px;font-size:12px}
+.btn:disabled{background:#7c8fb0;border-color:#7c8fb0;cursor:not-allowed}
+.toolbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px}
+.toolbar .count{font-size:13px;color:var(--muted)}
+
+/* ---- 表单 ---- */
+.add-form{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));
+  gap:14px 12px;margin-bottom:18px;
+}
+.add-form .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+.add-form .field label i{color:var(--red);font-style:normal}
+.add-form input[type="text"], .add-form input[type="password"]{
+  width:100%;height:38px;padding:0 10px;border:1px solid #c3d0e0;border-radius:4px;
+  font-size:13px;outline:none;transition:border-color .2s;background:#fff;
+}
+.add-form input:focus{border-color:var(--blue-deep)}
+.avatar-cell{display:flex;align-items:center;gap:10px}
+.avatar-cell input[type="file"]{font-size:12px;max-width:140px}
+.avatar-prev{
+  width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0;
+  border:1px solid var(--border);background:var(--bg);
+}
+.gen-pwd{display:flex;gap:6px}
+.gen-pwd input{flex:1}
+.gen-pwd button{height:38px;white-space:nowrap}
+
+/* ---- 筛选条 ---- */
+.filter-bar{
+  display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;padding:12px;
+  background:var(--bg);border:1px solid var(--border);border-radius:4px;margin-bottom:14px;
+}
+.filter-bar .f label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+.filter-bar .f input{
+  height:34px;padding:0 8px;border:1px solid #c3d0e0;border-radius:4px;font-size:13px;outline:none;background:#fff;
+}
+.filter-bar .f input:focus{border-color:var(--blue-deep)}
+
+/* ---- 表格 ---- */
+.table-wrap{overflow:auto;border:1px solid var(--border);max-height:560px}
+table{width:100%;border-collapse:collapse;min-width:1000px}
+thead th{
+  background:var(--blue-deep);color:#fff;padding:9px 12px;font-size:13px;text-align:left;
+  position:sticky;top:0;z-index:5;white-space:nowrap;font-weight:600;
+}
+tbody td{padding:8px 12px;border-top:1px solid var(--border);font-size:13px;color:var(--text);vertical-align:middle}
+tbody tr:nth-child(even){background:#f7fafd}
+tbody tr:hover{background:#eef4fc}
+.avatar-sm{width:40px;height:40px;border-radius:50%;object-fit:cover;display:block;border:1px solid var(--border);background:var(--bg)}
+.thumb{width:96px;height:72px;object-fit:cover;border-radius:2px;cursor:zoom-in;border:1px solid var(--border);display:block;background:var(--bg)}
+.loc-marker-dot{width:16px;height:16px;background:#e74c3c;border:3px solid #fff;border-radius:50%;box-shadow:0 0 8px rgba(0,0,0,.45)}
+.empty{text-align:center;color:var(--muted);padding:24px 0;font-size:13px}
+.status-badge{display:inline-block;padding:2px 8px;border-radius:2px;font-size:12px}
+.status-normal{background:#ecfdf3;color:#157a32;border:1px solid #b7e4c7}
+.status-edited{background:#fff7e6;color:#9a6700;border:1px solid #f3d9a4}
+.status-study{background:#fffbe6;color:#C77700;border:1px solid #f5d78e;font-weight:bold}
+
+/* ---- 弹窗 ---- */
+.modal{position:fixed;inset:0;background:rgba(13,43,82,.55);display:none;align-items:center;justify-content:center;z-index:1500}
+.modal-box{
+  background:#fff;border-radius:4px;padding:24px;width:min(720px,94vw);
+  max-height:92vh;overflow-y:auto;border:1px solid var(--border);
+}
+.modal-box h3{font-size:16px;color:var(--blue-deep);margin-bottom:16px;display:flex;align-items:center}
+.modal-box h3::before{content:"";display:inline-block;width:4px;height:15px;background:var(--blue-deep);margin-right:8px}
+.edit-form{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px 12px}
+.edit-form .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+.edit-form .field label i{color:var(--red);font-style:normal}
+.edit-form input[type="text"], .edit-form input[type="password"], .edit-form input[type="datetime-local"]{
+  width:100%;height:38px;padding:0 10px;border:1px solid #c3d0e0;border-radius:4px;font-size:13px;outline:none;background:#fff;
+}
+.edit-form input:focus{border-color:var(--blue-deep)}
+.modal-actions{grid-column:1 / -1;display:flex;justify-content:flex-end;gap:10px;margin-top:8px}
+.btn-cancel{border:1px solid #c3d0e0;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;background:#fff;color:var(--text);padding:8px 18px}
+.btn-cancel:hover{background:var(--bg)}
+.img-modal{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;align-items:center;justify-content:center;z-index:2000;cursor:zoom-out}
+.img-modal img{max-width:92vw;max-height:92vh;border-radius:4px}
+
+/* ---- 局域网与二维码 ---- */
+.sync-block{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:14px 16px}
+.sync-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:8px 0;font-size:13px}
+.sync-label{color:var(--muted);width:130px;flex-shrink:0}
+.sync-pill{display:inline-block;padding:3px 12px;border-radius:2px;background:#fff;color:var(--text);font-size:12px;word-break:break-all;border:1px solid var(--border)}
+.sync-pill.ok{background:#ecfdf3;color:#157a32;border:1px solid #b7e4c7}
+.sync-pill.err{background:#fef2f2;color:#b42318;border:1px solid #f3c1be}
+.qr-box{margin:10px 0;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.qr-box canvas{border:1px solid var(--border);background:#fff;padding:6px}
+.sync-log{
+  background:#0d1b3a;color:#cfe0ff;border-radius:4px;padding:10px 12px;font-size:12px;
+  line-height:1.8;max-height:180px;overflow-y:auto;font-family:Consolas,monospace;
+  white-space:pre-wrap;word-break:break-all;margin-top:10px;
+}
+.sync-log .t{color:#8fb3ff}.sync-log .ok{color:#7ee2a8}.sync-log .err{color:#ff9d94}
+
+/* ---- 系统设置 ---- */
+.set-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px 18px}
+.set-item label{display:block;font-size:12px;color:var(--muted);margin-bottom:5px}
+.set-item input{width:100%;height:38px;padding:0 10px;border:1px solid #c3d0e0;border-radius:4px;font-size:13px;outline:none}
+.set-item input:focus{border-color:var(--blue-deep)}
+.set-tip{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.7}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <img src="logo.jpg" alt="系统标志">
+    <span>电子点名管理系统 · 管理端</span>
+  </div>
+  <div class="right">
+    <span id="topTime">--</span>
+    <span>当前管理员：<span class="welcome" id="welcomeName"></span></span>
+    <button type="button" class="btn btn-danger btn-sm" id="logoutBtn">退出登录</button>
+  </div>
+</header>
+<div class="stripes"></div>
+
+<main>
+  <!-- ============ 1. 囚犯管理 ============ -->
+  <section class="card">
+    <h2>囚犯管理</h2>
+    <p class="hint">新增囚犯（必填：囚号、密码、姓名；可填：待遇、监区、罪名、头像照片，密码可自动生成）。列表点击「编辑」可修改全部信息（含换头像、重置密码）；删除囚犯（admin 不可删），其历史打卡记录一并删除。</p>
+    <form id="addUserForm" class="add-form" autocomplete="off">
+      <div class="field">
+        <label for="newUsername">囚号<i> *</i></label>
+        <input type="text" id="newUsername" placeholder="2-20位中英文/数字/_/-" required>
+      </div>
+      <div class="field">
+        <label for="newPassword">密码<i> *</i></label>
+        <div class="gen-pwd">
+          <input type="text" id="newPassword" placeholder="至少4位" required>
+          <button type="button" class="btn btn-ghost" id="genPwdBtn">自动生成</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="newName">姓名<i> *</i></label>
+        <input type="text" id="newName" placeholder="如：张三" required>
+      </div>
+      <div class="field">
+        <label for="newTreatment">待遇</label>
+        <input type="text" id="newTreatment" placeholder="如：标准 / 特殊">
+      </div>
+      <div class="field">
+        <label for="newPrisonArea">监区</label>
+        <input type="text" id="newPrisonArea" placeholder="如：三监区">
+      </div>
+      <div class="field">
+        <label for="newCrime">罪名</label>
+        <input type="text" id="newCrime" placeholder="如：盗窃罪">
+      </div>
+      <div class="field">
+        <label>头像照片</label>
+        <div class="avatar-cell">
+          <input type="file" id="newAvatar" accept="image/*">
+          <img class="avatar-prev" id="newAvatarPrev" alt="头像预览" style="display:none">
+        </div>
+      </div>
+      <button type="submit" class="btn">新增囚犯</button>
+    </form>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>头像</th><th>囚号</th><th>姓名</th><th>角色</th><th>待遇</th><th>监区</th><th>罪名</th><th>创建时间</th><th>操作</th></tr>
+        </thead>
+        <tbody id="userBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 2. 打卡记录管理 ============ -->
+  <section class="card">
+    <h2>电子点名记录</h2>
+    <p class="hint">展示全部打卡记录（自动绑定囚犯姓名/监区/罪名），支持按囚号、姓名、日期区间筛选；记录可修改（时间/地址/经纬度/照片）与删除（二次确认）。地址为空或「地址解析失败」的记录可点击「解析地址」补触发逆地理编码。</p>
+    <div class="filter-bar">
+      <div class="f"><label>囚号</label><input type="text" id="fUsername" placeholder="如 PR001"></div>
+      <div class="f"><label>姓名</label><input type="text" id="fName" placeholder="如 张三"></div>
+      <div class="f"><label>起始日期</label><input type="date" id="fDateFrom"></div>
+      <div class="f"><label>结束日期</label><input type="date" id="fDateTo"></div>
+      <button type="button" class="btn" id="filterBtn">筛选</button>
+      <button type="button" class="btn btn-ghost" id="resetFilterBtn">重置</button>
+    </div>
+    <div class="toolbar">
+      <span class="count">共 <b id="recordCount">0</b> 条打卡记录（点击图片可放大）</span>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button type="button" class="btn btn-secondary" id="importBtn">导入 Excel（含图片）</button>
+        <button type="button" class="btn" id="exportBtn">一键导出 Excel（含图片）</button>
+      </div>
+    </div>
+    <input type="file" id="importFile" accept=".xlsx" style="display:none">
+    <p class="empty" id="recordEmpty" style="display:none">暂无打卡记录。</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>序号</th><th>囚号</th><th>姓名</th><th>监区</th><th>罪名</th><th>打卡时间</th><th>详细地址</th><th>定位（经纬度）</th><th>打卡图片</th><th>卫星地图</th><th>状态</th><th>操作</th></tr>
+        </thead>
+        <tbody id="recordBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ 3. 局域网连接与数据接收 ============ -->
+  <section class="card">
+    <h2>局域网连接与数据接收</h2>
+    <p class="hint">管理端 EXE 内置本地 Web 服务（0.0.0.0:8090）。用户端扫码下方二维码即可一键连接（二维码内容含本机局域网地址）；也可在用户端手动输入地址。用户端离线打卡数据自动上传，本页按 record_id 去重合并；服务端同时校验 60 秒打卡冷却。</p>
+    <div class="sync-block">
+      <div class="sync-row">
+        <span class="sync-label">本地服务状态：</span>
+        <span id="lanStatus" class="sync-pill">检测中…</span>
+        <span class="sync-label" style="width:auto">局域网地址：</span>
+        <span id="lanAddr" class="sync-pill">—</span>
+      </div>
+      <div class="qr-box">
+        <div id="qrBox"></div>
+        <div style="font-size:12px;color:var(--muted);line-height:2">
+          <div>使用用户端「扫码连接」扫描上方二维码；</div>
+          <div>二维码内容：<code id="qrText">—</code></div>
+        </div>
+      </div>
+      <div class="sync-row">
+        <span class="sync-label">待接收离线记录：</span>
+        <span id="inboxCount" class="sync-pill">0 条</span>
+        <button type="button" class="btn btn-sm" id="receiveBtn">立即接收并合并</button>
+      </div>
+      <div class="sync-log" id="adminSyncLog"></div>
+    </div>
+  </section>
+
+  <!-- ============ 4. 系统设置 ============ -->
+  <section class="card">
+    <h2>系统设置</h2>
+    <div class="set-grid">
+      <div class="set-item">
+        <label>管理密码</label>
+        <input type="password" id="setOldPwd" placeholder="当前密码">
+        <input type="password" id="setNewPwd" placeholder="新密码（至少4位）" style="margin-top:8px">
+        <input type="password" id="setNewPwd2" placeholder="确认新密码" style="margin-top:8px">
+        <button type="button" class="btn" id="changePwdBtn" style="margin-top:10px">修改密码</button>
+      </div>
+      <div class="set-item">
+        <label>高德地图 Key（逆地理编码）</label>
+        <input type="text" id="setAmapKey" placeholder="留空则使用离线默认 config.js 或免费备用服务">
+        <button type="button" class="btn" id="saveAmapBtn" style="margin-top:10px">保存 Key</button>
+        <p class="set-tip">Key 用于经纬度→省/市/区县/街道/门牌号详细地址解析；高德 Web 服务 Key 校验调用来源 IP 白名单，更换网络后需在高德控制台更新白名单（错误码 10005）。</p>
+      </div>
+      <div class="set-item">
+        <label>腾讯位置服务 Key（推荐，街道/地标级）</label>
+        <input type="text" id="setTencentKey" placeholder="lbs.qq.com 免费申请，无需 IP 白名单">
+        <button type="button" class="btn" id="saveTencentBtn" style="margin-top:10px">保存 Key</button>
+        <p class="set-tip">免费申请：lbs.qq.com → 控制台 → 应用管理 → 创建应用 → 添加 Key（WebService API）。填入后地址解析优先使用，可精确到街道门牌与附近地标，国内直连稳定。</p>
+      </div>
+      <div class="set-item">
+        <label>用户端打卡间隔（分钟）</label>
+        <input type="number" id="setCooldownMin" min="1" max="1440" placeholder="默认 5 分钟">
+        <button type="button" class="btn" id="saveCooldownBtn" style="margin-top:10px">保存间隔</button>
+        <p class="set-tip">同一囚号两次打卡的最小间隔。改小可让用户频繁打卡，改大可限制打卡频率；保存后用户端自动生效，服务端权威校验。</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- 编辑囚犯弹窗 -->
+<div class="modal" id="editModal">
+  <div class="modal-box">
+    <h3>编辑囚犯信息</h3>
+    <form id="editForm" class="edit-form" autocomplete="off">
+      <div class="field"><label for="editUsername">囚号<i> *</i></label><input type="text" id="editUsername" required></div>
+      <div class="field">
+        <label for="editPassword">密码（重置）<i> *</i></label>
+        <div class="gen-pwd">
+          <input type="text" id="editPassword" required>
+          <button type="button" class="btn btn-ghost" id="editGenPwdBtn">自动生成</button>
+        </div>
+      </div>
+      <div class="field"><label for="editName">姓名<i> *</i></label><input type="text" id="editName" required></div>
+      <div class="field"><label for="editTreatment">待遇</label><input type="text" id="editTreatment"></div>
+      <div class="field"><label for="editPrisonArea">监区</label><input type="text" id="editPrisonArea"></div>
+      <div class="field"><label for="editCrime">罪名</label><input type="text" id="editCrime"></div>
+      <div class="field" style="grid-column:1 / -1">
+        <label>头像照片（不上传则保持原头像）</label>
+        <div class="avatar-cell">
+          <input type="file" id="editAvatar" accept="image/*">
+          <img class="avatar-prev" id="editAvatarPrev" alt="头像预览">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" id="editCancelBtn">取消</button>
+        <button type="submit" class="btn">保存修改</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 编辑打卡记录弹窗 -->
+<div class="modal" id="recordEditModal">
+  <div class="modal-box">
+    <h3>编辑打卡记录</h3>
+    <form id="recordEditForm" class="edit-form" autocomplete="off">
+      <div class="field"><label for="reTime">打卡时间<i> *</i></label><input type="datetime-local" id="reTime" required></div>
+      <div class="field"><label for="reAddr">详细地址<i> *</i></label><input type="text" id="reAddr" required></div>
+      <div class="field"><label for="reLat">纬度<i> *</i></label><input type="text" id="reLat" required></div>
+      <div class="field"><label for="reLng">经度<i> *</i></label><input type="text" id="reLng" required></div>
+      <div class="field" style="grid-column:1 / -1">
+        <label>打卡图片（不上传则保留原图片）</label>
+        <div class="avatar-cell">
+          <input type="file" id="reImage" accept="image/*">
+          <img class="avatar-prev" id="reImagePrev" alt="打卡图片预览" style="width:72px;height:54px;border-radius:2px;object-fit:cover">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" id="reCancelBtn">取消</button>
+        <button type="submit" class="btn">保存修改</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 打卡大图预览弹窗 -->
+<div class="img-modal" id="modal"><img id="modalImg" alt="打卡大图"></div>
+
+<!-- 打卡位置卫星地图弹窗 -->
+<div class="modal" id="recordMapModal">
+  <div class="modal-box" style="max-width:600px">
+    <h3>打卡位置 · 卫星地图</h3>
+    <div id="recordMapBox" style="width:100%;height:340px;border:1px solid var(--border);border-radius:4px;background:#e8edf2"></div>
+    <p id="recordMapAddr" style="font-size:13px;color:#666;margin-top:10px;line-height:1.7"></p>
+    <div class="modal-actions">
+      <button type="button" class="btn-cancel" id="recordMapClose">关 闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   本地存储数据结构（与 login.html / user.html 一致）：
+   - checkin_users   : [{username(囚号), password_hash, salt, role, name,
+                         treatment, prisonArea, crime, avatar, createTime}]
+   - checkin_records : [{record_id, prisoner_id, image/photo, lat, lng,
+                         address, time, status, sync_status, created_at}]
+   - checkin_session : {username, role, token, expires, loginTime}
+   - checkin_settings: {adminPassword?, amapKey}
+   密码统一 SHA-256(盐:密码) 哈希存储；兼容旧明文数据。
+   ============================================================ */
+(function () {
+  'use strict';
+
+  const LS = { users: 'checkin_users', records: 'checkin_records', session: 'checkin_session', settings: 'checkin_settings' };
+  const $ = id => document.getElementById(id);
+  const LOGO = 'logo.jpg';
+  const API = 'http://127.0.0.1:8090';
+  const hasBridge = !!window.checkinBridge;
+
+  /* ---------- 通用工具 ---------- */
+  function getUsers() { try { return JSON.parse(localStorage.getItem(LS.users) || '[]'); } catch (e) { return []; } }
+  function getRecords() { try { return JSON.parse(localStorage.getItem(LS.records) || '[]'); } catch (e) { return []; } }
+  function getSession() { try { return JSON.parse(localStorage.getItem(LS.session) || 'null'); } catch (e) { return null; } }
+  function getSettings() { try { return JSON.parse(localStorage.getItem(LS.settings) || '{}'); } catch (e) { return {}; } }
+  function saveUsers(list) { localStorage.setItem(LS.users, JSON.stringify(list)); persist(); }
+  function saveRecords(list) { localStorage.setItem(LS.records, JSON.stringify(list)); persist(); }
+  function saveSettings(s) { localStorage.setItem(LS.settings, JSON.stringify(s)); persist(); }
+  function nowStr() {
+    const d = new Date(); const p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' +
+           p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  function fieldOf(obj, key) {
+    return (obj && obj[key] !== undefined && obj[key] !== null && String(obj[key]).trim() !== '')
+      ? String(obj[key]) : '-';
+  }
+  /* 兼容旧字段：photo 与 image 等价；prisoner_id 与 username 等价 */
+  function rid(r) { return r.record_id || r.id; }
+  function pid(r) { return r.prisoner_id || r.username; }
+  function pimg(r) { return r.photo || r.image || ''; }
+
+  /* ---------- 密码哈希（Web Crypto） ---------- */
+  async function sha256Hex(text) {
+    const data = new TextEncoder().encode(text);
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  async function makeHash(password, salt) { return sha256Hex(String(salt) + ':' + String(password)); }
+  function randomSalt() {
+    let s = ''; const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    for (let i = 0; i < 8; i++) s += chars[Math.floor(Math.random() * chars.length)];
+    return s;
+  }
+  function genPassword(len) {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    let s = '';
+    for (let i = 0; i < (len || 8); i++) s += chars[Math.floor(Math.random() * chars.length)];
+    return s;
+  }
+
+  /* ---------- 图片压缩 ---------- */
+  function compressImage(file, maxSide, quality) {
+    return new Promise(function (resolve, reject) {
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const img = new Image();
+        img.onload = function () {
+          const MAX = maxSide || 400;
+          let w = img.width, h = img.height;
+          if (w > h && w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+          else if (h >= w && h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', quality || 0.72));
+        };
+        img.onerror = function () { reject(new Error('图片加载失败')); };
+        img.src = e.target.result;
+      };
+      reader.onerror = function () { reject(new Error('文件读取失败')); };
+      reader.readAsDataURL(file);
+    });
+  }
+  function compressDataUrl(dataUrl, maxSide, quality) {
+    return new Promise(function (resolve) {
+      if (!dataUrl) { resolve(null); return; }
+      const img = new Image();
+      img.onload = function () {
+        const MAX = maxSide || 240;
+        let w = img.width, h = img.height;
+        if (w > h && w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+        else if (h >= w && h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality || 0.6));
+      };
+      img.onerror = function () { resolve(null); };
+      img.src = dataUrl;
+    });
+  }
+
+  /* ---------- 主数据桥（EXE：LocalStorage ↔ 服务端文件同源共享） ---------- */
+  async function initBridge() {
+    if (!hasBridge) return;
+    try {
+      const data = await window.checkinBridge.loadData();
+      if (data && data.settings && data.settings.amapKey) {
+        const st = getSettings(); st.amapKey = data.settings.amapKey; saveSettingsSilent(st);
+      }
+      if (data && data.settings && data.settings.tencentKey) {
+        const st = getSettings(); st.tencentKey = data.settings.tencentKey; saveSettingsSilent(st);
+      }
+      if (data && data.settings && data.settings.checkinCooldownMin) {
+        const st = getSettings(); st.checkinCooldownMin = data.settings.checkinCooldownMin; saveSettingsSilent(st);
+      }
+      if (data && Array.isArray(data.users) && data.users.length) {
+        // 服务端文件与本地 LocalStorage 取并集（按 囚号 / record_id 去重）
+        const users = getUsers();
+        const uMap = new Map(users.map(u => [u.username, u]));
+        data.users.forEach(u => { if (!uMap.has(u.username)) uMap.set(u.username, u); });
+        saveUsersSilent(Array.from(uMap.values()));
+      }
+      if (data && Array.isArray(data.records) && data.records.length) {
+        const records = getRecords();
+        const rMap = new Map(records.map(r => [rid(r), r]));
+        data.records.forEach(r => { if (!rMap.has(rid(r))) rMap.set(rid(r), r); });
+        saveRecordsSilent(Array.from(rMap.values()));
+      }
+    } catch (e) { /* 桥不可用则忽略 */ }
+  }
+  function persist() {
+    if (!hasBridge) return;
+    try {
+      window.checkinBridge.saveData({
+        users: getUsers(), records: getRecords(), settings: getSettings()
+      });
+    } catch (e) { /* 忽略 */ }
+  }
+  function saveUsersSilent(l) { localStorage.setItem(LS.users, JSON.stringify(l)); }
+  function saveRecordsSilent(l) { localStorage.setItem(LS.records, JSON.stringify(l)); }
+  function saveSettingsSilent(s) { localStorage.setItem(LS.settings, JSON.stringify(s)); }
+
+  /* ---------- 会话校验：必须是管理员登录 ---------- */
+  const session = getSession();
+  if (!session || session.role !== 'admin' || !getUsers().some(u => u.username === session.username && u.role === 'admin')) {
+    localStorage.removeItem(LS.session);
+    window.location.replace('login.html');
+    return;
+  }
+  $('welcomeName').textContent = session.username;
+  $('topTime').textContent = nowStr();
+  setInterval(function () { $('topTime').textContent = nowStr(); }, 1000);
+
+  /* ============================================================
+     功能1：囚犯管理（新增 / 编辑 / 删除）
+     ============================================================ */
+  let pendingAvatar = '';
+  $('genPwdBtn').addEventListener('click', function () {
+    $('newPassword').value = genPassword(8);
+  });
+  $('editGenPwdBtn').addEventListener('click', function () {
+    $('editPassword').value = genPassword(8);
+  });
+  $('newAvatar').addEventListener('change', function () {
+    const file = this.files && this.files[0];
+    if (!file) return;
+    if (!/^image\//.test(file.type)) { alert('请选择图片文件'); this.value = ''; return; }
+    compressImage(file, 200).then(function (dataUrl) {
+      pendingAvatar = dataUrl;
+      $('newAvatarPrev').src = dataUrl;
+      $('newAvatarPrev').style.display = 'block';
+    }).catch(function () { alert('头像处理失败，请换一张图片重试'); this.value = ''; });
+  });
+
+  /* 新增囚犯（囚号 + 密码 + 姓名 + 待遇/监区/罪名 + 头像；密码哈希存储） */
+  $('addUserForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const username = $('newUsername').value.trim();
+    const password = $('newPassword').value;
+    const name = $('newName').value.trim();
+    const treatment = $('newTreatment').value.trim();
+    const prisonArea = $('newPrisonArea').value.trim();
+    const crime = $('newCrime').value.trim();
+
+    if (!/^[\w\u4e00-\u9fa5-]{2,20}$/.test(username)) { alert('囚号需为 2-20 位中英文、数字、下划线或短横线'); return; }
+    if (password.length < 4) { alert('密码至少 4 位'); return; }
+    if (!name || name.length > 20) { alert('请填写姓名（20 字以内）'); return; }
+    const users = getUsers();
+    if (users.some(u => u.username === username)) { alert('该囚号已存在，请更换'); return; }
+
+    const salt = randomSalt();
+    users.push({
+      username: username, role: 'user',
+      password_hash: await makeHash(password, salt), salt: salt,
+      name: name, treatment: treatment, prisonArea: prisonArea, crime: crime,
+      avatar: pendingAvatar, createTime: nowStr()
+    });
+    saveUsers(users);
+    e.target.reset();
+    pendingAvatar = '';
+    $('newAvatarPrev').style.display = 'none';
+    $('newAvatarPrev').removeAttribute('src');
+    renderUsers(); renderRecords();
+    alert('囚犯「' + username + '」创建成功，现在可以用囚号登录');
+  });
+
+  /* 编辑囚犯 */
+  let editingUsername = null;
+  let pendingEditAvatar = '';
+  window.openEditPrisoner = function (username) {
+    const u = getUsers().find(x => x.username === username);
+    if (!u) return;
+    editingUsername = username;
+    pendingEditAvatar = '';
+    $('editUsername').value = u.username;
+    $('editPassword').value = u.password || '';
+    $('editName').value = u.name || '';
+    $('editTreatment').value = u.treatment || '';
+    $('editPrisonArea').value = u.prisonArea || '';
+    $('editCrime').value = u.crime || '';
+    $('editAvatarPrev').src = (u.avatar && String(u.avatar).trim()) ? u.avatar : LOGO;
+    $('editModal').style.display = 'flex';
+  };
+  $('editCancelBtn').addEventListener('click', function () { $('editModal').style.display = 'none'; });
+  $('editAvatar').addEventListener('change', function () {
+    const file = this.files && this.files[0];
+    if (!file) return;
+    if (!/^image\//.test(file.type)) { alert('请选择图片文件'); this.value = ''; return; }
+    compressImage(file, 200).then(function (dataUrl) {
+      pendingEditAvatar = dataUrl;
+      $('editAvatarPrev').src = dataUrl;
+    }).catch(function () { alert('头像处理失败，请换一张图片重试'); this.value = ''; });
+  });
+  $('editForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const newUsername = $('editUsername').value.trim();
+    const password = $('editPassword').value;
+    const name = $('editName').value.trim();
+    const treatment = $('editTreatment').value.trim();
+    const prisonArea = $('editPrisonArea').value.trim();
+    const crime = $('editCrime').value.trim();
+
+    if (!/^[\w\u4e00-\u9fa5-]{2,20}$/.test(newUsername)) { alert('囚号需为 2-20 位中英文、数字、下划线或短横线'); return; }
+    if (password.length < 4) { alert('密码至少 4 位'); return; }
+    if (!name || name.length > 20) { alert('请填写姓名（20 字以内）'); return; }
+    const users = getUsers();
+    if (users.some(u => u.username === newUsername && u.username !== editingUsername)) { alert('该囚号已存在，请更换'); return; }
+    const idx = users.findIndex(u => u.username === editingUsername);
+    if (idx < 0) { alert('未找到该囚犯，请刷新后重试'); return; }
+    const oldUsername = users[idx].username;
+
+    const salt = randomSalt();
+    users[idx] = {
+      ...users[idx],
+      username: newUsername, name: name,
+      treatment: treatment, prisonArea: prisonArea, crime: crime,
+      password_hash: await makeHash(password, salt), salt: salt,
+      avatar: pendingEditAvatar || users[idx].avatar || ''
+    };
+    saveUsers(users);
+
+    // 囚号变更 → 同步更新该囚犯全部打卡记录中的囚号
+    if (newUsername !== oldUsername) {
+      saveRecords(getRecords().map(r => pid(r) === oldUsername ? { ...r, prisoner_id: newUsername, username: newUsername } : r));
+    }
+    $('editModal').style.display = 'none';
+    renderUsers(); renderRecords();
+    alert('囚犯信息已更新（含密码重置，用户端下次登录生效）');
+  });
+
+  /* 删除囚犯（admin 不可删；其打卡记录一并删除） */
+  window.deletePrisoner = function (username) {
+    if (!confirm('确定删除囚犯「' + username + '」吗？其所有打卡记录将一并删除！')) return;
+    const users = getUsers().filter(u => u.username !== username);
+    const records = getRecords().filter(r => pid(r) !== username);
+    saveUsers(users); saveRecords(records);
+    renderUsers(); renderRecords();
+    alert('囚犯「' + username + '」已删除');
+  };
+
+  function renderUsers() {
+    const users = getUsers();
+    let html = '';
+    users.forEach(function (u) {
+      const roleText = u.role === 'admin' ? '管理员' : '囚犯';
+      const avatar = (u.avatar && String(u.avatar).trim()) ? u.avatar : LOGO;
+      const action = u.role === 'admin'
+        ? '<span class="status-badge status-normal">不可删除</span>'
+        : '<button type="button" class="btn btn-sm" style="margin-right:6px" onclick="openEditPrisoner(\'' + esc(u.username) + '\')">编辑</button>' +
+          '<button type="button" class="btn btn-danger btn-sm" onclick="deletePrisoner(\'' + esc(u.username) + '\')">删除</button>';
+      html += '<tr>' +
+        '<td><img class="avatar-sm" src="' + avatar + '" alt="头像"></td>' +
+        '<td>' + esc(u.username) + '</td>' +
+        '<td>' + esc(fieldOf(u, 'name')) + '</td>' +
+        '<td>' + roleText + '</td>' +
+        '<td>' + esc(fieldOf(u, 'treatment')) + '</td>' +
+        '<td>' + esc(fieldOf(u, 'prisonArea')) + '</td>' +
+        '<td>' + esc(fieldOf(u, 'crime')) + '</td>' +
+        '<td>' + esc(u.createTime || '-') + '</td>' +
+        '<td>' + action + '</td></tr>';
+    });
+    $('userBody').innerHTML = html;
+  }
+
+  /* ============================================================
+     功能2：打卡记录管理（筛选 / 修改 / 删除 / 地址解析）
+     ============================================================ */
+  const filters = { username: '', name: '', from: '', to: '' };
+  function updateFilter() {
+    filters.username = $('fUsername').value.trim();
+    filters.name = $('fName').value.trim();
+    filters.from = $('fDateFrom').value;
+    filters.to = $('fDateTo').value;
+  }
+  function matchFilter(r, u) {
+    if (filters.username && !String(pid(r)).toLowerCase().includes(filters.username.toLowerCase())) return false;
+    if (filters.name && !String(u ? u.name : '').toLowerCase().includes(filters.name.toLowerCase())) return false;
+    const t = String(r.time || '');
+    const day = t.slice(0, 10);
+    if (filters.from && day < filters.from) return false;
+    if (filters.to && day > filters.to) return false;
+    return true;
+  }
+  $('filterBtn').addEventListener('click', function () { updateFilter(); renderRecords(); });
+  $('resetFilterBtn').addEventListener('click', function () {
+    $('fUsername').value = ''; $('fName').value = ''; $('fDateFrom').value = ''; $('fDateTo').value = '';
+    filters.username = ''; filters.name = ''; filters.from = ''; filters.to = '';
+    renderRecords();
+  });
+
+  function renderRecords() {
+    updateFilter();
+    const records = getRecords();
+    const users = getUsers();
+    const filtered = records.filter(r => {
+      const u = users.find(x => x.username === pid(r));
+      return matchFilter(r, u);
+    });
+    $('recordCount').textContent = records.length + '（筛选 ' + filtered.length + '）';
+    if (filtered.length === 0) {
+      $('recordBody').innerHTML = '';
+      $('recordEmpty').style.display = 'block';
+      return;
+    }
+    $('recordEmpty').style.display = 'none';
+    let html = '';
+    filtered.forEach(function (r, i) {
+      const u = users.find(x => x.username === pid(r));
+      const name = u ? fieldOf(u, 'name') : pid(r);
+      const prison = u ? fieldOf(u, 'prisonArea') : '-';
+      const crime = u ? fieldOf(u, 'crime') : '-';
+      const addr = (r.address && String(r.address).trim()) ? r.address : '未记录地址';
+      const img = pimg(r);
+      const st = r.status === 'study'
+        ? '<span class="status-badge status-study">自慰</span>'
+        : (r.status === 'edited'
+          ? '<span class="status-badge status-edited">已修改</span>'
+          : '<span class="status-badge status-normal">正常</span>');
+      const addrBtn = (r.address && String(r.address).trim() && String(r.address).indexOf('解析失败') < 0)
+        ? '' : '<button type="button" class="btn btn-ghost btn-sm" style="margin-top:4px" onclick="resolveAddr(\'' + esc(rid(r)) + '\')">解析地址</button>';
+      html += '<tr>' +
+        '<td>' + (i + 1) + '</td>' +
+        '<td>' + esc(pid(r)) + '</td>' +
+        '<td>' + esc(name) + '</td>' +
+        '<td>' + esc(prison) + '</td>' +
+        '<td>' + esc(crime) + '</td>' +
+        '<td>' + esc(r.time || '-') + '</td>' +
+        '<td>' + esc(addr) + addrBtn + '</td>' +
+        '<td>经度 ' + esc(fieldOf(r, 'lng')) + '<br>纬度 ' + esc(fieldOf(r, 'lat')) + '</td>' +
+        '<td>' + (img ? '<img class="thumb" src="' + img + '" alt="打卡图片" onclick="viewImage(this.src)">' : '<span style="color:#999">无图</span>') + '</td>' +
+        '<td>' + (r.lat && r.lng ? '<button type="button" class="btn btn-ghost btn-sm" onclick="showRecordMap(\'' + esc(rid(r)) + '\')">查看地图</button>' : '<span style="color:#999">无坐标</span>') + '</td>' +
+        '<td>' + st + '</td>' +
+        '<td style="white-space:nowrap">' +
+          '<button type="button" class="btn btn-sm" style="margin-right:6px" onclick="openRecordEdit(\'' + esc(rid(r)) + '\')">修改</button>' +
+          '<button type="button" class="btn btn-danger btn-sm" onclick="deleteRecord(\'' + esc(rid(r)) + '\')">删除</button>' +
+        '</td></tr>';
+    });
+    $('recordBody').innerHTML = html;
+  }
+
+  /* 打卡记录卫星地图（Leaflet 本地库 + 高德卫星/路网瓦片） */
+  let recordMap = null, recordMapMarker = null;
+  window.showRecordMap = function (id) {
+    const r = getRecords().find(x => rid(x) === id);
+    if (!r || !r.lat || !r.lng) { alert('该记录缺少坐标'); return; }
+    const lat = Number(r.lat), lng = Number(r.lng);
+    $('recordMapAddr').textContent = (r.status === 'study' ? '【自慰】' : '【正常】') + ' ' +
+      (r.address && String(r.address).trim() ? String(r.address) : '未记录地址') +
+      '（经度 ' + lng + '，纬度 ' + lat + '）';
+    $('recordMapModal').style.display = 'flex';
+    const box = $('recordMapBox');
+    if (typeof L === 'undefined') { box.innerHTML = '<div style="padding:60px 20px;text-align:center;color:#888">地图组件加载失败，请检查 lib/leaflet 文件</div>'; return; }
+    const icon = L.divIcon({ className: 'loc-marker', html: '<div class="loc-marker-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
+    if (!recordMap) {
+      recordMap = L.map(box, { zoomControl: true, attributionControl: false }).setView([lat, lng], 17);
+      L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=7&x={x}&y={y}&z={z}', {
+        subdomains: ['1', '2', '3', '4'], maxZoom: 19, minZoom: 3
+      }).addTo(recordMap);
+      recordMapMarker = L.marker([lat, lng], { icon: icon }).addTo(recordMap);
+    } else {
+      recordMap.setView([lat, lng], 17);
+      recordMapMarker.setLatLng([lat, lng]);
+    }
+  };
+  $('recordMapClose').addEventListener('click', function () { $('recordMapModal').style.display = 'none'; });
+
+  /* 记录修改 */
+  let editingRecordId = null;
+  let pendingRecordImage = '';
+  window.openRecordEdit = function (id) {
+    const r = getRecords().find(x => rid(x) === id);
+    if (!r) { alert('记录不存在，请刷新后重试'); return; }
+    editingRecordId = id;
+    pendingRecordImage = '';
+    const t = String(r.time || '');
+    $('reTime').value = t.length >= 16 ? t.slice(0, 16).replace(' ', 'T') : '';
+    $('reAddr').value = r.address || '';
+    $('reLat').value = r.lat || '';
+    $('reLng').value = r.lng || '';
+    $('reImagePrev').src = pimg(r) || LOGO;
+    $('recordEditModal').style.display = 'flex';
+  };
+  $('reCancelBtn').addEventListener('click', function () { $('recordEditModal').style.display = 'none'; });
+  $('reImage').addEventListener('change', function () {
+    const file = this.files && this.files[0];
+    if (!file) return;
+    if (!/^image\//.test(file.type)) { alert('请选择图片文件'); this.value = ''; return; }
+    compressImage(file, 720).then(function (dataUrl) {
+      pendingRecordImage = dataUrl;
+      $('reImagePrev').src = dataUrl;
+    }).catch(function () { alert('图片处理失败，请重试'); document.getElementById('reImage').value = ''; });
+  });
+  $('recordEditForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    const t = $('reTime').value;
+    const addr = $('reAddr').value.trim();
+    const lat = $('reLat').value.trim();
+    const lng = $('reLng').value.trim();
+    if (!t || !addr) { alert('请填写打卡时间与详细地址'); return; }
+    if (!/^-?\d{1,3}(\.\d+)?$/.test(lat) || !/^-?\d{1,3}(\.\d+)?$/.test(lng)) { alert('经纬度格式不正确（应为数字）'); return; }
+    const records = getRecords();
+    const idx = records.findIndex(x => rid(x) === editingRecordId);
+    if (idx < 0) { alert('记录不存在，请刷新后重试'); return; }
+    const fmt = t.replace('T', ' ') + ':00';
+    records[idx] = Object.assign({}, records[idx], {
+      time: fmt, address: addr, lat: Number(lat).toFixed(6), lng: Number(lng).toFixed(6),
+      photo: pendingRecordImage || pimg(records[idx]),
+      status: 'edited'
+    });
+    saveRecords(records);
+    $('recordEditModal').style.display = 'none';
+    renderRecords();
+    alert('打卡记录已更新');
+  });
+  window.deleteRecord = function (id) {
+    if (!confirm('确定删除该条打卡记录吗？删除后不可恢复！')) return;
+    saveRecords(getRecords().filter(r => rid(r) !== id));
+    renderRecords();
+    alert('打卡记录已删除');
+  };
+
+  /* 大图预览 */
+  window.viewImage = function (src) {
+    $('modalImg').src = src;
+    $('modal').style.display = 'flex';
+  };
+  $('modal').addEventListener('click', function () { this.style.display = 'none'; });
+
+  /* ============================================================
+     逆地理编码（管理端回填离线记录地址）
+     优先高德（extensions=all 返回省市县街道门牌号），失败降级免费服务
+     ============================================================ */
+  function getAmapKey() {
+    const st = getSettings();
+    if (st.amapKey && String(st.amapKey).trim()) return String(st.amapKey).trim();
+    if (window.CHECKIN_CONFIG && window.CHECKIN_CONFIG.amapKey) return String(window.CHECKIN_CONFIG.amapKey).trim();
+    return '';
+  }
+  async function reverseGeocode(lat, lng) {
+    // 0) 走服务端代理（腾讯 Key → Nominatim → bigdatacloud，管理端与用户端同一解析链）
+    try {
+      const resp = await fetch('/api/regeo?lat=' + lat + '&lng=' + lng, { signal: AbortSignal.timeout(20000) });
+      const d = await resp.json();
+      if (d && d.ok && d.address) return d.address;
+    } catch (e) { /* 降级 */ }
+    // 1) 高德 Key（本地直连，需 IP 白名单）
+    const key = getAmapKey();
+    if (key) {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(function () { ctrl.abort(); }, 8000);
+        const url = 'https://restapi.amap.com/v3/geocode/regeo?key=' + encodeURIComponent(key) +
+                    '&location=' + lng + ',' + lat + '&extensions=all';
+        const resp = await fetch(url, { signal: ctrl.signal });
+        clearTimeout(timer);
+        const d = await resp.json();
+        if (d && d.status === '1' && d.regeocode) {
+          const a = d.regeocode;
+          if (a.formatted_address) return a.formatted_address;
+        }
+      } catch (e) { /* 降级 */ }
+    }
+    // 免费备用服务
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(function () { ctrl.abort(); }, 8000);
+      const url = 'https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=' + lat + '&longitude=' + lng + '&localityLanguage=zh';
+      const resp = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (resp.ok) {
+        const d = await resp.json();
+        const parts = [];
+        const seen = {};
+        const push = s => { s = String(s || '').trim(); if (s && !seen[s]) { parts.push(s); seen[s] = 1; } };
+        if (d.principalSubdivision) push(d.principalSubdivision);
+        if (d.city && d.city !== d.principalSubdivision) push(d.city);
+        if (d.locality && d.locality !== d.city) push(d.locality);
+        if (d.localityInfo && d.localityInfo.administrative) {
+          for (const a of d.localityInfo.administrative) {
+            if (a && a.description && /street|road|suburb|town|village|neighbourhood|hamlet|district/i.test(a.description)) push(a.name);
+          }
+        }
+        if (parts.length) return parts.join('');
+      }
+    } catch (e) { /* 忽略 */ }
+    return null;
+  }
+  window.resolveAddr = async function (id) {
+    const records = getRecords();
+    const idx = records.findIndex(x => rid(x) === id);
+    if (idx < 0) return;
+    const r = records[idx];
+    if (!r.lat || !r.lng) { alert('该记录无经纬度，无法解析'); return; }
+    const addr = await reverseGeocode(r.lat, r.lng);
+    records[idx] = Object.assign({}, records[idx], {
+      address: addr || '地址解析失败', status: records[idx].status === 'edited' ? 'edited' : 'edited'
+    });
+    saveRecords(records);
+    renderRecords();
+    alert(addr ? '地址解析成功：' + addr : '地址解析失败（检查高德 Key / 网络）');
+  };
+
+  /* ============================================================
+     功能3：Excel 导出（囚犯表 + 打卡记录表，两 Sheet 含图）
+     ============================================================ */
+  function todayName() {
+    const d = new Date(); const p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+  async function exportExcel() {
+    if (typeof ExcelJS === 'undefined') { alert('Excel 导出库 (exceljs) 未加载成功，请检查网络连接后刷新页面重试'); return; }
+    const users = getUsers();
+    const records = getRecords();
+    if (users.filter(u => u.role !== 'admin').length === 0 && records.length === 0) { alert('暂无可导出的数据'); return; }
+
+    const wb = new ExcelJS.Workbook();
+    /* ---- Sheet1 囚犯表 ---- */
+    const s1 = wb.addWorksheet('囚犯表');
+    const h1 = ['囚号', '姓名', '待遇', '监区', '罪名', '创建时间', '头像照片'];
+    s1.addRow(h1);
+    const hr1 = s1.getRow(1);
+    hr1.height = 26;
+    hr1.font = { bold: true, color: { argb: 'FFFFFFFF' }, name: '微软雅黑', size: 11 };
+    hr1.alignment = { vertical: 'middle', horizontal: 'center' };
+    hr1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0D2B52' } };
+    s1.columns = [{ width: 14 }, { width: 12 }, { width: 10 }, { width: 12 }, { width: 16 }, { width: 22 }, { width: 20 }];
+    let pRow = 1;
+    for (const u of users) {
+      if (u.role === 'admin') continue;
+      pRow++;
+      s1.addRow([u.username, u.name, u.treatment || '', u.prisonArea || '', u.crime || '', u.createTime || '', '']);
+      s1.getRow(pRow).height = 60;
+      s1.getRow(pRow).alignment = { vertical: 'middle', wrapText: true };
+      if (u.avatar) {
+        const small = await compressDataUrl(u.avatar, 200, 0.6);
+        if (small) {
+          const m = small.match(/^data:image\/(jpeg|png);base64,(.+)$/i);
+          if (m) {
+            const imgId = wb.addImage({ base64: m[2], extension: m[1].toLowerCase() === 'png' ? 'png' : 'jpeg' });
+            s1.addImage(imgId, { tl: { col: 6, row: pRow - 1 }, ext: { width: 48, height: 48 } });
+          }
+        }
+      }
+    }
+
+    /* ---- Sheet2 打卡记录表 ---- */
+    const s2 = wb.addWorksheet('打卡记录表');
+    const h2 = ['囚号', '姓名', '待遇', '监区', '罪名', '打卡时间', '经纬度', '详细地址', '状态', '打卡照片'];
+    s2.addRow(h2);
+    const hr2 = s2.getRow(1);
+    hr2.height = 26;
+    hr2.font = { bold: true, color: { argb: 'FFFFFFFF' }, name: '微软雅黑', size: 11 };
+    hr2.alignment = { vertical: 'middle', horizontal: 'center' };
+    hr2.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0D2B52' } };
+    s2.columns = [{ width: 14 }, { width: 12 }, { width: 10 }, { width: 12 }, { width: 16 }, { width: 22 }, { width: 30 }, { width: 46 }, { width: 10 }, { width: 24 }];
+    let embedded = 0;
+    for (let i = 0; i < records.length; i++) {
+      const r = records[i];
+      const u = users.find(x => x.username === pid(r));
+      const addr = (r.address && String(r.address).trim()) ? r.address : '未记录地址';
+      const latlng = '经度 ' + fieldOf(r, 'lng') + ' / 纬度 ' + fieldOf(r, 'lat');
+      const stText = r.status === 'study' ? '自慰' : (r.status === 'edited' ? '已修改' : '正常');
+      s2.addRow([pid(r), u ? fieldOf(u, 'name') : pid(r), u ? fieldOf(u, 'treatment') : '',
+                 u ? fieldOf(u, 'prisonArea') : '', u ? fieldOf(u, 'crime') : '',
+                 r.time || '', latlng, addr, stText, '']);
+      const row = s2.lastRow;
+      row.height = 100;
+      row.alignment = { vertical: 'middle', wrapText: true };
+      const img = pimg(r);
+      if (img) {
+        const small = await compressDataUrl(img, 400, 0.6);
+        if (small) {
+          const m = small.match(/^data:image\/(jpeg|png);base64,(.+)$/i);
+          if (m) {
+            const imgId = wb.addImage({ base64: m[2], extension: m[1].toLowerCase() === 'png' ? 'png' : 'jpeg' });
+            s2.addImage(imgId, { tl: { col: 9, row: i + 1 }, ext: { width: 130, height: 92 } });
+            embedded++;
+          }
+        }
+      }
+    }
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '打卡系统数据_' + todayName() + '.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    alert('已导出：囚犯表 ' + (pRow - 1) + ' 人（含头像）、打卡记录 ' + records.length + ' 条（含 ' + embedded + ' 张压缩打卡照片）→ 打卡系统数据_' + todayName() + '.xlsx');
+  }
+  $('exportBtn').addEventListener('click', exportExcel);
+
+  /* ============================================================
+     功能4：Excel 导入（含图片）
+     解析 xlsx 的 Sheet「囚犯表 / 打卡记录表」，图片按单元格锚定映射：
+     囚犯表图片 → 头像；打卡记录表图片 → 打卡照片。按囚号去重。
+     ============================================================ */
+  $('importBtn').addEventListener('click', function () { $('importFile').click(); });
+  $('importFile').addEventListener('change', async function () {
+    const file = this.files && this.files[0];
+    this.value = '';
+    if (!file) return;
+    if (typeof ExcelJS === 'undefined') { alert('Excel 解析库 (exceljs) 未加载成功，请检查网络连接后刷新页面重试'); return; }
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buf);
+      const mediaMap = {};
+      (wb.model.media || []).forEach(function (m, idx) {
+        // exceljs：im.imageId 为 wb.model.media 数组下标，故按下标建立映射
+        if (m.buffer) mediaMap[idx] = bufToDataUrl(m.buffer, m.extension);
+      });
+
+      const users = getUsers();
+      const records = getRecords();
+      let addedP = 0, updatedP = 0, skippedP = 0;
+      let addedR = 0, updatedR = 0, skippedR = 0;
+
+      const s1 = wb.getWorksheet('囚犯表');
+      if (s1) {
+        // 表头列定位
+        const hdr = [];
+        s1.getRow(1).eachCell({ includeEmpty: true }, function (c, n) { hdr[n] = String(c.value || '').trim(); });
+        const col = name => { for (let i = 1; i <= hdr.length; i++) if (hdr[i] === name) return i; return -1; };
+        const cId = col('囚号'), cName = col('姓名'), cTreat = col('待遇'), cArea = col('监区'), cCrime = col('罪名');
+        if (cId > 0) {
+          const rowImgs = {};
+          s1.getImages().forEach(function (im) {
+            const rk = imageRowKey(im);
+            if (rk >= 0 && im.imageId != null) rowImgs[rk] = mediaMap[im.imageId] || '';
+          });
+          const existingNames = new Set(users.filter(u => u.role !== 'admin').map(u => u.username));
+          let willUpdate = false;
+          s1.eachRow({ includeEmpty: false }, function (row, rn) {
+            if (rn <= 1) return;
+            const v = n => { const cell = row.getCell(n); return cell && cell.value != null ? String(cell.value).trim() : ''; };
+            const uname = v(cId);
+            if (!uname) return;
+            if (existingNames.has(uname)) willUpdate = true;
+          });
+          let updateMode = false;
+          if (willUpdate) updateMode = confirm('囚犯表中存在已存在囚号：点击「确定」更新这些囚犯的信息，点击「取消」跳过不更新。');
+          s1.eachRow({ includeEmpty: false }, function (row, rn) {
+            if (rn <= 1) return;
+            const v = n => { const cell = row.getCell(n); return cell && cell.value != null ? String(cell.value).trim() : ''; };
+            const uname = v(cId);
+            if (!uname) return;
+            const avatar = rowImgs[rn - 1] || '';
+            const idx = users.findIndex(u => u.username === uname);
+            if (idx >= 0) {
+              if (!updateMode) { skippedP++; return; }
+              users[idx] = Object.assign({}, users[idx], {
+                name: v(cName) || users[idx].name,
+                treatment: cTreat > 0 && v(cTreat) !== '' ? v(cTreat) : users[idx].treatment,
+                prisonArea: cArea > 0 && v(cArea) !== '' ? v(cArea) : users[idx].prisonArea,
+                crime: cCrime > 0 && v(cCrime) !== '' ? v(cCrime) : users[idx].crime,
+                avatar: avatar || users[idx].avatar || ''
+              });
+              updatedP++;
+            } else {
+              const salt = randomSalt();
+              users.push({
+                username: uname, role: 'user', name: v(cName) || uname,
+                treatment: cTreat > 0 ? v(cTreat) : '', prisonArea: cArea > 0 ? v(cArea) : '',
+                crime: cCrime > 0 ? v(cCrime) : '', avatar: avatar,
+                password_hash: '', salt: salt, createTime: nowStr(),
+                _imported: true
+              });
+              addedP++;
+            }
+          });
+          // 导入囚犯默认密码 checkin123（仅新增时），并生成哈希
+          for (const u of users) {
+            if (u._imported && !u.password_hash) {
+              u.password_hash = await makeHash('checkin123', u.salt);
+              delete u._imported;
+            }
+          }
+        }
+      }
+
+      const s2 = wb.getWorksheet('打卡记录表');
+      if (s2) {
+        const hdr = [];
+        s2.getRow(1).eachCell({ includeEmpty: true }, function (c, n) { hdr[n] = String(c.value || '').trim(); });
+        const col = name => { for (let i = 1; i <= hdr.length; i++) if (hdr[i] === name) return i; return -1; };
+        const cId = col('囚号'), cTime = col('打卡时间'), cLatLng = col('经纬度'), cAddr = col('详细地址'), cStatus = col('状态');
+        if (cId > 0 && cTime > 0) {
+          const rowImgs = {};
+          s2.getImages().forEach(function (im) {
+            const rk = imageRowKey(im);
+            if (rk >= 0 && im.imageId != null) rowImgs[rk] = mediaMap[im.imageId] || '';
+          });
+          const existIds = new Set(records.map(r => rid(r)));   // 含本页已有 + 本次已导入
+          s2.eachRow({ includeEmpty: false }, function (row, rn) {
+            if (rn <= 1) return;
+            const v = n => { const cell = row.getCell(n); return cell && cell.value != null ? String(cell.value).trim() : ''; };
+            const uname = v(cId);
+            if (!uname) return;
+            let lat = '', lng = '';
+            const ll = v(cLatLng);
+            const lm = /经度\s*([-\d.]+)\s*\/\s*纬度\s*([-\d.]+)/.exec(ll);
+            if (lm) { lng = lm[1]; lat = lm[2]; }
+            const recId = stableId(uname + '|' + v(cTime));
+            const photo = rowImgs[rn - 1] || '';
+            const rec = {
+              record_id: recId, prisoner_id: uname, username: uname,
+              time: v(cTime), lat: lat, lng: lng, address: v(cAddr) || '',
+              photo: photo, status: (v(cStatus) === '已修改' ? 'edited' : (v(cStatus) === '自慰' ? 'study' : 'normal')),
+              sync_status: 1, created_at: nowStr()
+            };
+            if (existIds.has(recId)) { skippedR++; return; }
+            records.push(rec);
+            existIds.add(recId);
+            addedR++;
+          });
+        }
+      }
+
+      saveUsers(users);
+      saveRecords(records);
+      renderUsers(); renderRecords();
+      alert('导入完成：囚犯表 新增 ' + addedP + '、更新 ' + updatedP + '、跳过 ' + skippedP + '；打卡记录表 新增 ' + addedR + '、跳过 ' + skippedR + '。\n（新增囚犯默认密码 checkin123，请尽快在管理端修改）');
+    } catch (e) {
+      alert('导入失败：' + e.message + '。请确认文件为系统导出的 .xlsx 格式。');
+    }
+  });
+  /* ArrayBuffer → dataURL（浏览器环境，支持任意大小分块） */
+  function bufToDataUrl(buf, ext) {
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return 'data:' + (ext === 'png' ? 'image/png' : 'image/jpeg') + ';base64,' + btoa(bin);
+  }
+  /* 图片行锚定 → 0-based 行号（exceljs 4.4.0 实测：tl.row 与 nativeRow 均为 0-based；
+     导出时 addImage tl.row = pRow-1（Excel 行 pRow 的 0-based 下标），导入反向映射用 rn-1） */
+  function imageRowKey(im) {
+    const tl = im.range && im.range.tl;
+    if (!tl) return -1;
+    if (tl.nativeRow != null) return Number(tl.nativeRow);
+    if (tl.row != null) return Number(tl.row);
+    return -1;
+  }
+  /* 确定性 record_id（囚号+时间），重复导入同一文件不会产生重复记录 */
+  function stableId(text) {
+    let h1 = 5381, h2 = 52711;
+    const s = String(text);
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      h1 = (h1 * 33) ^ c;
+      h2 = (h2 * 31) ^ c;
+    }
+    return 'imp_' + (h1 >>> 0).toString(16) + (h2 >>> 0).toString(16);
+  }
+
+  /* ============================================================
+     功能5：局域网服务状态 / 二维码 / 离线记录接收合并
+     ============================================================ */
+  let adminOnline = false;
+  function adminLog(msg, type) {
+    const box = $('adminSyncLog');
+    const tag = type === 'ok' ? '<span class="ok">[成功]</span>'
+              : type === 'err' ? '<span class="err">[失败]</span>'
+              : '<span class="t">[系统]</span>';
+    box.innerHTML += '<div>' + tag + ' ' + esc(nowStr()) + ' ' + esc(msg) + '</div>';
+    box.scrollTop = box.scrollHeight;
+  }
+  async function checkAdminServer() {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(function () { ctrl.abort(); }, 4000);
+      const r = await fetch(API + '/api/ping', { signal: ctrl.signal });
+      clearTimeout(timer);
+      const data = await r.json();
+      adminOnline = !!(r.ok && data && data.ok);
+    } catch (e) { adminOnline = false; }
+    const el = $('lanStatus');
+    if (adminOnline) {
+      el.textContent = '运行中（本地服务正常）';
+      el.className = 'sync-pill ok';
+    } else {
+      el.textContent = '未运行（请使用打包后的 EXE 打开本页）';
+      el.className = 'sync-pill err';
+    }
+  }
+  async function fetchAdminAddr() {
+    try {
+      const r = await fetch(API + '/api/address');
+      const data = await r.json();
+      if (data && data.ok && data.urls && data.urls.length) {
+        const urls = data.urls;
+        $('lanAddr').textContent = urls.join(' ， ');
+        const first = urls[0] + '/connect?v=2';
+        $('qrText').textContent = first;
+        const qrBox = $('qrBox');
+        qrBox.innerHTML = '';
+        if (typeof QRCode !== 'undefined') {
+          new QRCode(qrBox, { text: first, width: 150, height: 150, colorDark: '#0d2b52', colorLight: '#ffffff' });
+        } else {
+          qrBox.innerHTML = '<span style="color:#999">二维码组件未加载</span>';
+        }
+      }
+    } catch (e) {
+      $('lanAddr').textContent = '—';
+    }
+  }
+  async function receiveInbox(manual) {
+    if (!adminOnline) {
+      if (manual) alert('管理端本地服务未运行，无法接收。请用打包后的 EXE 打开本页。');
+      return;
+    }
+    try {
+      const r = await fetch(API + '/api/inbox');
+      const data = await r.json();
+      if (!data || !data.ok) throw new Error('服务响应异常');
+      const inbox = data.records || [];
+      $('inboxCount').textContent = inbox.length + ' 条';
+      if (inbox.length === 0) {
+        if (manual) adminLog('暂无待接收的离线记录', '');
+        return;
+      }
+      const records = getRecords();
+      const exist = new Set(records.map(x => rid(x)));
+      const fresh = [];
+      let resolveCount = 0;
+      for (const item of inbox) {
+        if (!item || !(item.record_id || item.id) || exist.has(item.record_id || item.id)) continue;
+        const rec = {
+          record_id: item.record_id || item.id,
+          prisoner_id: item.prisoner_id || item.username,
+          username: item.prisoner_id || item.username,
+          time: item.time || '',
+          lat: item.lat, lng: item.lng,
+          address: item.address || '',
+          photo: item.photo || item.image || '',
+          status: item.status || 'normal',
+          sync_status: item.sync_status != null ? item.sync_status : 0,
+          created_at: item.receivedAt || nowStr()
+        };
+        // 离线记录若地址为空，管理端统一补触发逆地理编码
+        if (!rec.address && rec.lat && rec.lng) {
+          const addr = await reverseGeocode(rec.lat, rec.lng);
+          rec.address = addr || '地址解析失败';
+          resolveCount++;
+        }
+        records.unshift(rec);
+        exist.add(rec.record_id);
+        fresh.push(rec);
+      }
+      if (fresh.length > 0) saveRecords(records);
+      await fetch(API + '/api/inbox/ack', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: inbox.map(x => x.record_id || x.id) })
+      });
+      adminLog('已接收 ' + fresh.length + ' 条新打卡记录（自动去重跳过 ' + (inbox.length - fresh.length) + ' 条；补解析地址 ' + resolveCount + ' 条）', 'ok');
+      renderRecords();
+      $('inboxCount').textContent = '0 条';
+    } catch (e) {
+      adminLog('接收失败：' + e.message, 'err');
+    }
+  }
+  $('receiveBtn').addEventListener('click', function () { receiveInbox(true); });
+  setInterval(function () {
+    checkAdminServer().then(function () {
+      if (adminOnline) { receiveInbox(false); fetchAdminAddr(); }
+    });
+  }, 5000);
+
+  /* ============================================================
+     功能6：系统设置（修改管理密码 / 高德 Key）
+     ============================================================ */
+  $('changePwdBtn').addEventListener('click', async function () {
+    const oldPwd = $('setOldPwd').value;
+    const newPwd = $('setNewPwd').value;
+    const newPwd2 = $('setNewPwd2').value;
+    if (newPwd.length < 4) { alert('新密码至少 4 位'); return; }
+    if (newPwd !== newPwd2) { alert('两次输入的新密码不一致'); return; }
+    const users = getUsers();
+    const idx = users.findIndex(u => u.username === session.username && u.role === 'admin');
+    if (idx < 0) { alert('未找到管理员账号'); return; }
+    const u = users[idx];
+    const okOld = (u.password_hash && u.salt)
+      ? u.password_hash === await makeHash(oldPwd, u.salt)
+      : u.password === oldPwd;
+    if (!okOld) { alert('当前密码不正确'); return; }
+    const salt = randomSalt();
+    users[idx].password_hash = await makeHash(newPwd, salt);
+    users[idx].salt = salt;
+    delete users[idx].password;
+    saveUsers(users);
+    $('setOldPwd').value = ''; $('setNewPwd').value = ''; $('setNewPwd2').value = '';
+    alert('管理密码已修改，下次登录请使用新密码');
+  });
+  $('saveAmapBtn').addEventListener('click', function () {
+    const key = $('setAmapKey').value.trim();
+    const st = getSettings();
+    st.amapKey = key;
+    saveSettings(st);
+    alert(key ? '高德 Key 已保存（用户端联网后自动下发）' : '已清空高德 Key（将使用离线默认配置或免费备用服务）');
+  });
+  $('saveTencentBtn').addEventListener('click', function () {
+    const key = $('setTencentKey').value.trim();
+    const st = getSettings();
+    st.tencentKey = key;
+    saveSettings(st);
+    alert(key ? '腾讯位置服务 Key 已保存（地址解析优先使用）' : '已清空腾讯 Key（将使用免费备用服务）');
+  });
+  $('saveCooldownBtn').addEventListener('click', function () {
+    const v = parseInt($('setCooldownMin').value, 10);
+    if (!v || v < 1 || v > 1440) { alert('请输入 1–1440 之间的分钟数'); return; }
+    const st = getSettings();
+    st.checkinCooldownMin = v;
+    saveSettings(st);
+    alert('打卡间隔已保存为 ' + v + ' 分钟，用户端联网后立即生效');
+  });
+
+  /* ============================================================
+     初始化
+     ============================================================ */
+  (async function () {
+    await initBridge();
+    const st = getSettings();
+    if (st.amapKey) $('setAmapKey').value = st.amapKey;
+    if (st.tencentKey) $('setTencentKey').value = st.tencentKey;
+    if (st.checkinCooldownMin) $('setCooldownMin').value = st.checkinCooldownMin;
+    renderUsers();
+    renderRecords();
+    checkAdminServer().then(function () {
+      if (adminOnline) { fetchAdminAddr(); receiveInbox(false); }
+    });
+  })();
+
+  /* ---------- 退出登录 ---------- */
+  $('logoutBtn').addEventListener('click', function () {
+    if (!confirm('确定退出登录吗？')) return;
+    localStorage.removeItem(LS.session);
+    window.location.replace('login.html');
+  });
+})();
+</script>
+</body>
+</html>

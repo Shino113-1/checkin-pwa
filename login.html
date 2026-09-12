@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>电子点名管理系统 - 登录</title>
+<meta name="theme-color" content="#0d2b52">
+<link rel="manifest" href="manifest.json">
+<script src="config.js"></script>
+<script>
+  /* 仅在 Cordova APP 环境（https://localhost）加载 cordova.js，
+     浏览器/PWA/管理端内页不加载；使原生插件（相机/扫码/定位）在 APP 内可用 */
+  (function () {
+    if (window.location.hostname === 'localhost') {
+      document.write('<script src="cordova.js"><\/script>');
+    }
+  })();
+</script>
+<style>
+/* ============================================================
+   电子点名管理系统 v6.0 · 登录页（login.html）
+   风格：公安深蓝 + 顶部深蓝横幅（标志+系统名）+ 上下黑白条纹
+   登录：管理员使用账号 admin，囚犯使用囚号 + 密码
+   ============================================================ */
+:root{
+  --blue-deep:#0d2b52;   /* 主色：藏蓝 */
+  --blue-1:#1b4f8a;      /* 辅色：公安蓝 */
+  --blue-2:#2c5f9e;
+  --bg:#f2f5f9;          /* 页面浅灰背景 */
+  --card:#ffffff;
+  --text:#333333;
+  --muted:#666666;
+  --border:#d9e2ec;
+  --red:#c0392b;
+  --ok:#27ae60;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:"Microsoft YaHei","PingFang SC","Source Han Sans SC","Segoe UI",Arial,sans-serif;
+  min-height:100vh;background:var(--bg);color:var(--text);
+  display:flex;flex-direction:column;
+}
+/* ---- 顶部深蓝横幅（56px） ---- */
+.topbar{
+  height:56px;background:var(--blue-deep);color:#fff;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 22px;flex-shrink:0;
+}
+.topbar .brand{display:flex;align-items:center;font-size:18px;font-weight:700;letter-spacing:1px}
+.topbar .brand img{height:34px;width:34px;object-fit:cover;border-radius:50%;margin-right:10px;border:1px solid rgba(255,255,255,.55);background:#fff}
+.topbar .right{font-size:13px;color:#cfe0ff}
+/* ---- 黑白条纹装饰条（每段 16px） ---- */
+.stripes{
+  height:16px;flex-shrink:0;
+  background:repeating-linear-gradient(to bottom,#111 0 16px,#fff 16px 32px);
+}
+/* ---- 登录区 ---- */
+.login-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:28px 16px}
+.card{
+  width:100%;max-width:420px;background:var(--card);
+  border:1px solid var(--border);border-radius:4px;
+  padding:30px 30px 24px;box-shadow:0 2px 10px rgba(13,43,82,.08);
+}
+.card .head{text-align:center;margin-bottom:22px}
+.card .head .logo{width:64px;height:64px;object-fit:cover;border-radius:50%;border:1px solid var(--border);background:#fff;margin:0 auto 10px;display:block}
+.card h1{font-size:22px;color:var(--blue-deep);letter-spacing:2px}
+.card .sub{font-size:13px;color:var(--muted);margin-top:6px}
+.field{margin-bottom:16px}
+.field label{display:block;font-size:13px;color:var(--text);margin-bottom:6px;font-weight:600}
+.field input{
+  width:100%;height:42px;padding:0 12px;border:1px solid #c3d0e0;border-radius:4px;
+  font-size:14px;outline:none;transition:border-color .2s,box-shadow .2s;
+}
+.field input:focus{border-color:var(--blue-deep);box-shadow:0 0 0 3px rgba(13,43,82,.10)}
+.btn{
+  display:block;width:100%;height:44px;border:none;border-radius:4px;cursor:pointer;
+  background:var(--blue-deep);color:#fff;font-size:15px;font-weight:600;letter-spacing:4px;
+  transition:background .2s;
+}
+.btn:hover{background:var(--blue-1)}
+.btn:disabled{background:#7c8fb0;cursor:not-allowed}
+.msg{min-height:20px;margin-top:12px;font-size:13px;text-align:center}
+.msg.error{color:var(--red)}
+.msg.ok{color:var(--ok)}
+.tip{
+  margin-top:16px;padding:10px 12px;background:var(--bg);border:1px solid var(--border);
+  border-radius:4px;font-size:12px;color:var(--muted);line-height:1.9;
+}
+.tip code{background:#dfe8f6;padding:1px 6px;border-radius:3px;color:var(--blue-deep)}
+.net-set{margin-top:10px;border-top:1px dashed var(--border);padding-top:10px}
+.net-toggle{
+  border:none;background:none;color:var(--blue-1);font-size:12px;cursor:pointer;padding:4px 0;
+  text-decoration:underline;
+}
+.net-body{margin-top:10px}
+.net-body .srv-row{display:flex;gap:8px}
+.net-body .srv-row input{
+  flex:1;height:36px;padding:0 10px;border:1px solid #c3d0e0;border-radius:4px;font-size:13px;outline:none;
+}
+.net-body .srv-row input:focus{border-color:var(--blue-deep)}
+.btn-mini{
+  height:36px;padding:0 14px;border:none;border-radius:4px;cursor:pointer;background:var(--blue-deep);
+  color:#fff;font-size:13px;white-space:nowrap;
+}
+.btn-mini:hover{background:var(--blue-1)}
+.net-msg{min-height:18px;font-size:12px;margin-top:6px}
+.net-msg.ok{color:var(--ok)}.net-msg.err{color:var(--red)}
+.net-hint{font-size:11px;color:var(--muted);line-height:1.7;margin-top:4px}
+.foot{height:16px;background:var(--blue-deep)}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <img src="logo.jpg" alt="系统标志">
+    <span>电子点名管理系统</span>
+  </div>
+  <div class="right" id="topTime">--</div>
+</header>
+<div class="stripes"></div>
+
+<div class="login-wrap">
+  <div class="card">
+    <div class="head">
+      <img class="logo" src="logo.jpg" alt="系统徽章">
+      <h1>电子点名管理系统</h1>
+      <p class="sub">管理员使用账号，囚犯使用囚号登录</p>
+    </div>
+    <form id="loginForm" autocomplete="off">
+      <div class="field">
+        <label for="username">囚号</label>
+        <input type="text" id="username" placeholder="囚犯请输入囚号（管理员请输入 admin）" required>
+      </div>
+      <div class="field">
+        <label for="password">密码</label>
+        <input type="password" id="password" placeholder="请输入密码" required>
+      </div>
+      <button type="submit" class="btn" id="loginBtn">登 录</button>
+      <p id="msg" class="msg"></p>
+    </form>
+    <div class="tip">
+      <strong>使用说明：</strong><br>
+      1. 管理员初始账号 <code>admin</code>，密码 <code>admin</code>（可在管理端「系统设置」中修改）；<br>
+      2. 囚犯账号（囚号）由管理员在管理后台创建，囚犯不能自行注册；<br>
+      3. 登录后系统按角色自动跳转到用户端 / 管理端；<br>
+      4. 未连接管理端时可使用本地缓存登录，数据在联网后自动同步。
+    </div>
+    <div class="net-set" id="netSet">
+      <button type="button" class="net-toggle" id="netToggle">首次使用？先设置管理端地址（扫码连接）</button>
+      <div class="net-body" id="netBody" style="display:none">
+        <div class="field" style="margin-bottom:10px">
+          <label for="serverInput">管理端地址</label>
+          <div class="srv-row">
+            <input type="text" id="serverInput" placeholder="http://192.168.1.100:8090">
+            <button type="button" class="btn-mini" id="saveServerBtn">保存并检测</button>
+          </div>
+        </div>
+        <p class="net-msg" id="netMsg"></p>
+        <p class="net-hint">管理端 EXE 打开后，「局域网连接与数据接收」页面显示二维码；在手机浏览器打开该二维码网址即可自动完成设置，也可手动输入上方地址。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="foot"></div>
+
+<script>
+/* ============================================================
+   本地存储数据结构（三个页面共用，键名必须保持一致）：
+   - checkin_users   : [{username(囚号), password_hash, salt, role,
+                         name, treatment, prisonArea, crime, avatar,
+                         createTime}]  密码以 SHA-256(盐:密码) 哈希存储
+   - checkin_session : {username, role, token, expires, loginTime}
+   - checkin_profiles: {囚号: {name, treatment, prisonArea, crime, avatar}}
+                         囚犯资料缓存（联网登录成功后更新，离线展示用）
+   - checkin_offline_creds : {囚号: {hash, salt}}  离线登录凭据缓存
+   说明：兼容旧数据——旧囚犯无哈希时按明文自动升级为哈希。
+   ============================================================ */
+(function () {
+  'use strict';
+
+  const LS = { users: 'checkin_users', session: 'checkin_session', profiles: 'checkin_profiles', creds: 'checkin_offline_creds' };
+
+  /* ---------- 通用工具 ---------- */
+  function getUsers() {
+    try { return JSON.parse(localStorage.getItem(LS.users) || '[]'); } catch (e) { return []; }
+  }
+  function saveUsers(list) { localStorage.setItem(LS.users, JSON.stringify(list)); }
+  function getSession() {
+    try { return JSON.parse(localStorage.getItem(LS.session) || 'null'); } catch (e) { return null; }
+  }
+  function nowStr() {
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' +
+           p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+  function showMsg(text, isError) {
+    const el = document.getElementById('msg');
+    el.textContent = text;
+    el.className = 'msg ' + (isError ? 'error' : 'ok');
+  }
+  function goHome(role) {
+    window.location.replace(role === 'admin' ? 'admin.html' : 'user.html');
+  }
+
+  /* ---------- 异步 SHA-256 哈希（Web Crypto） ---------- */
+  async function sha256Hex(text) {
+    const data = new TextEncoder().encode(text);
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+  async function makeHash(password, salt) {
+    return sha256Hex(String(salt) + ':' + String(password));
+  }
+  function randomSalt() {
+    let s = '';
+    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    for (let i = 0; i < 8; i++) s += chars[Math.floor(Math.random() * chars.length)];
+    return s;
+  }
+
+  /* 首次使用自动创建管理员账号 admin / admin（哈希存储） */
+  async function ensureAdmin() {
+    const users = getUsers();
+    const admin = users.find(u => u.username === 'admin');
+    if (!admin) {
+      const salt = randomSalt();
+      users.unshift({
+        username: 'admin', role: 'admin',
+        password_hash: await makeHash('admin', salt), salt: salt,
+        name: '管理员', treatment: '', prisonArea: '', crime: '', avatar: '',
+        createTime: nowStr()
+      });
+      saveUsers(users);
+    } else if (!admin.password_hash) {
+      // 旧数据升级：明文密码 → 哈希
+      const salt = randomSalt();
+      admin.password_hash = await makeHash(admin.password || 'admin', salt);
+      admin.salt = salt;
+      delete admin.password;
+      saveUsers(users);
+    }
+  }
+
+  /* 离线校验：本地哈希或旧明文（兼容） */
+  async function verifyLocal(username, password) {
+    const users = getUsers();
+    const u = users.find(x => x.username === username);
+    if (!u) return false;
+    if (u.password_hash && u.salt) return u.password_hash === await makeHash(password, u.salt);
+    if (u.password_hash) return u.password_hash === await makeHash(password, 'checkin');
+    return u.password === password;   // 旧明文兜底
+  }
+
+  /* ---------- API 基地址：EXE 内 / 局域网访问 / 已保存的管理端 / 纯本地 ---------- */
+  function getApiBase() {
+    if (window.checkinBridge) return 'http://127.0.0.1:8090';
+    // 优先使用已保存的管理端地址（APP 内页面源为 https://localhost，location.origin 不可用）
+    const saved = localStorage.getItem('checkin_server');
+    if (saved) return String(saved).replace(/\/+$/, '');
+    if (location.protocol === 'http:' || location.protocol === 'https:') return location.origin;
+    return '';
+  }
+
+  /* fetch 超时包装 */
+  function fetchTimeout(url, options, ms) {
+    return new Promise(function (resolve, reject) {
+      const ctrl = new AbortController();
+      const timer = setTimeout(function () { ctrl.abort(); reject(new Error('连接超时')); }, ms || 6000);
+      fetch(url, Object.assign({}, options, { signal: ctrl.signal }))
+        .then(function (r) { clearTimeout(timer); resolve(r); })
+        .catch(function (e) { clearTimeout(timer); reject(e); });
+    });
+  }
+
+  /* 服务端登录（token 24h），失败返回 null */
+  async function serverLogin(username, password, apiBase) {
+    try {
+      const r = await fetchTimeout(apiBase + '/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username, password: password })
+      }, 8000);
+      const data = await r.json();
+      if (!r.ok || !data || !data.ok) return null;
+      return data;   // {token, expires, user}
+    } catch (e) {
+      return null;   // 服务端不可达 → 本地兜底
+    }
+  }
+
+  /* ---------- 初始化 ---------- */
+  const apiBase = getApiBase();
+  document.getElementById('topTime').textContent = nowStr();
+  setInterval(function () { document.getElementById('topTime').textContent = nowStr(); }, 1000);
+
+  (async function () {
+    await ensureAdmin();
+    // 若已登录则直接进入对应页面
+    const session = getSession();
+    if (session && session.username) { goHome(session.role); return; }
+    // 已保存的管理端地址回显
+    const saved = localStorage.getItem('checkin_server');
+    if (saved) { document.getElementById('serverInput').value = saved; }
+    document.getElementById('loginBtn').disabled = false;
+  })();
+
+  /* ---------- 首次使用：设置管理端地址（扫码/手动） ---------- */
+  document.getElementById('netToggle').addEventListener('click', function () {
+    const body = document.getElementById('netBody');
+    body.style.display = body.style.display === 'none' ? 'block' : 'none';
+  });
+  document.getElementById('saveServerBtn').addEventListener('click', async function () {
+    const input = document.getElementById('serverInput');
+    const val = input.value.trim().replace(/\/+$/, '');
+    const msg = document.getElementById('netMsg');
+    if (!/^https?:\/\/[\w.-]+(:\d+)?$/.test(val)) {
+      msg.textContent = '地址格式不正确，示例：http://192.168.1.100:8090';
+      msg.className = 'net-msg err';
+      return;
+    }
+    localStorage.setItem('checkin_server', val);
+    msg.textContent = '正在检测连接…';
+    msg.className = 'net-msg';
+    try {
+      const r = await fetchTimeout(val + '/api/ping', {}, 5000);
+      const d = await r.json();
+      if (r.ok && d && d.ok) {
+        msg.textContent = '连接成功：' + val + '（可正常登录打卡）';
+        msg.className = 'net-msg ok';
+      } else {
+        msg.textContent = '服务已响应但状态异常，请确认是管理端 EXE 的地址';
+        msg.className = 'net-msg err';
+      }
+    } catch (e) {
+      let detail = (e && e.message) ? String(e.message) : String(e);
+      if (/abort/i.test(detail)) { detail = '请求超时（5秒未响应）'; }
+      else if (/network|fetch|load failed|failed/i.test(detail)) { detail = '网络请求失败（' + detail + '）'; }
+      msg.textContent = '无法连接：' + detail + '。请确认管理端EXE已运行、防火墙已放行8090端口';
+      msg.className = 'net-msg err';
+    }
+  });
+
+  /* ---------- 登录逻辑（服务端优先，离线本地兜底） ---------- */
+  document.getElementById('loginForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    const btn = document.getElementById('loginBtn');
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+    if (!username || !password) { showMsg('请输入囚号/账号和密码', true); return; }
+
+    btn.disabled = true;
+    btn.textContent = '验证中…';
+    showMsg('', false);
+
+    let sessionData = null;
+
+    // 服务端地址：输入框合法地址优先（兼容未保存/缓存被清），其次已保存值/页面来源
+    let base = apiBase;
+    const serverInput = document.getElementById('serverInput');
+    const serverVal = serverInput ? serverInput.value.trim().replace(/\/+$/, '') : '';
+    if (/^https?:\/\/[\w.-]+(:\d+)?$/.test(serverVal)) base = serverVal;
+    if (!base || /^https?:\/\/localhost/i.test(base)) {
+      showMsg('请先点「首次使用？设置管理端地址」填写管理端地址并保存', true);
+      btn.disabled = false;
+      btn.textContent = '登 录';
+      return;
+    }
+
+    // 1) 服务端登录（优先）
+    if (base) {
+      const s = await serverLogin(username, password, base);
+      if (s && s.user) {
+        localStorage.setItem('checkin_server', base);   // 记住管理端地址，下次免填
+        sessionData = {
+          username: s.user.username,
+          role: s.user.role,
+          token: s.token,
+          expires: s.expires,
+          loginTime: nowStr()
+        };
+        // 缓存囚犯资料与离线凭据
+        if (s.user.role === 'user') {
+          try {
+            const profiles = JSON.parse(localStorage.getItem(LS.profiles) || '{}');
+            profiles[s.user.username] = s.user;
+            localStorage.setItem(LS.profiles, JSON.stringify(profiles));
+            const creds = JSON.parse(localStorage.getItem(LS.creds) || '{}');
+            const users = getUsers();
+            const u = users.find(x => x.username === username);
+            if (u && u.password_hash && u.salt) creds[username] = { hash: u.password_hash, salt: u.salt };
+            localStorage.setItem(LS.creds, JSON.stringify(creds));
+          } catch (e) { /* 缓存失败不影响登录 */ }
+        }
+      } else {
+        showMsg('服务端验证未通过，尝试本地验证…', false);
+      }
+    }
+
+    // 2) 本地兜底（离线模式）
+    if (!sessionData) {
+      const okLocal = await verifyLocal(username, password);
+      const users = getUsers();
+      const u = users.find(x => x.username === username);
+      if (okLocal && u) {
+        sessionData = {
+          username: u.username,
+          role: u.role,
+          token: '',
+          expires: 0,
+          loginTime: nowStr()
+        };
+      } else {
+        showMsg('囚号/账号或密码错误', true);
+        btn.disabled = false;
+        btn.textContent = '登 录';
+        return;
+      }
+    }
+
+    localStorage.setItem(LS.session, JSON.stringify(sessionData));
+    showMsg('身份验证通过，正在进入…', false);
+    goHome(sessionData.role);
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>电子点名管理系统 - 正在进入登录页</title>
+<meta name="theme-color" content="#0d2b52">
+<link rel="manifest" href="manifest.json">
+<style>
+  /* 跳转等待页：深蓝主色，与系统风格一致 */
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:"Microsoft YaHei","PingFang SC","Segoe UI",Arial,sans-serif;
+    min-height:100vh;
+    background:linear-gradient(160deg,#081f4a 0%,#0d2b52 55%,#1b4f8a 100%);
+    color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    padding:56px 16px 80px;
+  }
+  .stripes{
+    position:fixed;left:0;right:0;top:0;height:16px;
+    background:repeating-linear-gradient(to bottom,#111 0 16px,#fff 16px 32px);
+  }
+  .stripes.bottom{top:auto;bottom:0}
+  .box{text-align:center}
+  .box img{width:72px;height:72px;border-radius:50%;border:2px solid rgba(255,255,255,.6);background:#fff;object-fit:cover}
+  .box h1{font-size:22px;margin-top:14px;letter-spacing:3px}
+  .box p{font-size:13px;color:#cfe0ff;margin-top:10px}
+  .spinner{
+    width:24px;height:24px;margin:18px auto 0;border-radius:50%;
+    border:3px solid rgba(255,255,255,.25);border-top-color:#fff;
+    animation:spin 1s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="stripes"></div>
+<div class="box">
+  <img src="logo.jpg" alt="系统标志">
+  <h1>电子点名管理系统</h1>
+  <p>正在进入登录页…</p>
+  <div class="spinner"></div>
+</div>
+<div class="stripes bottom"></div>
+<script src="cordova.js"></script>
+<script>
+  setTimeout(function () { window.location.replace('login.html'); }, 800);
+</script>
+</body>
+</html>
