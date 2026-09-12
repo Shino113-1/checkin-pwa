@@ -14,6 +14,30 @@
     }
   })();
 </script>
+<script>
+  /* ============================================================
+     PWA 自动升级：注册 Service Worker（网络优先策略）
+     安装一次后，每次打开在线时自动加载最新版本，无需重新下载。
+     检测到新 SW 接管时自动刷新页面，让新版立即生效。
+     ============================================================ */
+  (function () {
+    if (!('serviceWorker' in navigator)) return;
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' }).then(function (reg) {
+        /* 立即检查一次更新，确保冷启动也能拿到最新 SW */
+        if (reg && reg.update) reg.update().catch(function () { /* 离线忽略 */ });
+      }).catch(function () { /* 注册失败不影响正常使用 */ });
+
+      /* 新 SW 接管（skipWaiting 生效）后自动刷新，加载最新页面 */
+      var refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
+      });
+    });
+  })();
+</script>
 <style>
 /* ============================================================
    电子点名管理系统 v6.0 · 用户端（user.html）
@@ -975,6 +999,10 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
     updateOfflineBar(); updateConnUI();
     if (!online) { log('未连接管理端，无法同步', 'err'); return; }
     const r = await syncQueue();
+    /* 同步后立即刷新历史列表与队列计数，状态标签及时更新 */
+    await pullProfile();
+    await renderHistory();
+    updateQueueCount();
     if (r.reason === 'none') log('没有待上传的离线记录', 'ok');
   });
   $('pullBtn').addEventListener('click', async function () {

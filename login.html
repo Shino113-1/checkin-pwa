@@ -16,6 +16,26 @@
     }
   })();
 </script>
+<script>
+  /* ============================================================
+     PWA 自动升级：注册 Service Worker（网络优先策略）
+     安装一次后，每次打开在线时自动加载最新版本，无需重新下载。
+     ============================================================ */
+  (function () {
+    if (!('serviceWorker' in navigator)) return;
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' }).then(function (reg) {
+        if (reg && reg.update) reg.update().catch(function () { /* 离线忽略 */ });
+      }).catch(function () { /* 注册失败不影响正常使用 */ });
+      var refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
+      });
+    });
+  })();
+</script>
 <style>
 /* ============================================================
    电子点名管理系统 v6.0 · 登录页（login.html）

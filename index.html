@@ -43,9 +43,25 @@
   <div class="spinner"></div>
 </div>
 <div class="stripes bottom"></div>
-<script src="cordova.js"></script>
 <script>
   setTimeout(function () { window.location.replace('login.html'); }, 800);
+</script>
+<script>
+  /* PWA 自动升级：注册 Service Worker（网络优先），安装一次后自动更新 */
+  (function () {
+    if (!('serviceWorker' in navigator)) return;
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' }).then(function (reg) {
+        if (reg && reg.update) reg.update().catch(function () { });
+      }).catch(function () { });
+      var refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (refreshing) return;
+        refreshing = true;
+        window.location.reload();
+      });
+    });
+  })();
 </script>
 </body>
 </html>
