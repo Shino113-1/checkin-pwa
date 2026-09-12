@@ -2,6 +2,7 @@
   "name": "电子点名管理系统 - 用户端",
   "short_name": "电子点名",
   "description": "囚犯电子点名系统用户端：离线打卡（拍照 + 定位地址）、囚犯信息、局域网扫码连接与自动同步",
+  "version": "v10",
   "start_url": "./login.html",
   "scope": "./",
   "display": "standalone",
@@ -18,6 +19,12 @@
     {
       "src": "icon-512.png",
       "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-1024.png",
+      "sizes": "1024x1024",
       "type": "image/png",
       "purpose": "any"
     }
