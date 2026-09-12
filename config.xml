@@ -89,6 +89,11 @@
       </dict>
     </config-file>
 
+    <!-- 6.1.1 iOS 14+ 本地网络权限：访问局域网管理端必须声明，否则静默失败 -->
+    <config-file target="*-Info.plist" parent="NSLocalNetworkUsageDescription">
+      <string>用于连接同一局域网内的管理端并自动搜索</string>
+    </config-file>
+
     <!-- 6.2 权限用途描述（缺失会导致首次调用相机/相册/定位直接闪退） -->
     <config-file target="*-Info.plist" parent="NSCameraUsageDescription">
       <string>用于打卡拍照与扫码连接管理端</string>

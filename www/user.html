@@ -984,7 +984,7 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
         });
       };
       const workers = [];
-      for (let w = 0; w < 40; w++) workers.push(worker());
+      for (let w = 0; w < 16; w++) workers.push(worker());
       Promise.all(workers).then(function () { resolve(found); });
     });
   }
@@ -993,7 +993,10 @@ main{max-width:760px;margin:0 auto;padding:14px 14px 30px}
     const orig = btn.textContent;
     btn.disabled = true;
     btn.textContent = '正在搜索管理端…（约 15 秒）';
-    const nets = ['192.168.0', '192.168.1'];
+    let nets = ['192.168.0', '192.168.1', '10.0.0', '172.16.0', '172.20.0', '192.168.2', '192.168.3'];
+    const savedSrv = (localStorage.getItem('checkin_server') || '').replace(/^https?:\/\//, '');
+    const savedNet = savedSrv.split(':')[0].split('.').slice(0, 3).join('.');
+    if (savedNet && /^(\d+\.){2}\d+$/.test(savedNet)) { nets = [savedNet].concat(nets.filter(function (n) { return n !== savedNet; })); }
     let found = [];
     for (const net of nets) {
       const hits = await scanSubnet(net, 8090);

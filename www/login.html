@@ -374,12 +374,16 @@ body{
           });
         };
         const workers = [];
-        for (let w = 0; w < 40; w++) workers.push(worker());
+        for (let w = 0; w < 16; w++) workers.push(worker());
         Promise.all(workers).then(function () { resolve(found); });
       });
     };
     let found = [];
-    for (const net of ['192.168.0', '192.168.1']) {
+    let nets = ['192.168.0', '192.168.1', '10.0.0', '172.16.0', '172.20.0', '192.168.2', '192.168.3'];
+    const savedSrv = (localStorage.getItem('checkin_server') || '').replace(/^https?:\/\//, '');
+    const savedNet = savedSrv.split(':')[0].split('.').slice(0, 3).join('.');
+    if (savedNet && /^(\d+\.){2}\d+$/.test(savedNet)) { nets = [savedNet].concat(nets.filter(function (n) { return n !== savedNet; })); }
+    for (const net of nets) {
       const hits = await scanSubnet(net, 8090);
       if (hits.length) { found = found.concat(hits); break; }
     }
