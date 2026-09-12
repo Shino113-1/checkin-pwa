@@ -13,7 +13,7 @@
 'use strict';
 
 /* 缓存名：升级网页时改版本号即可整体刷新缓存 */
-const CACHE = 'checkin-user-v9';
+const CACHE = 'checkin-user-v10';
 
 /* 预缓存清单（相对路径，必须与本文件同目录） */
 const CORE = [
