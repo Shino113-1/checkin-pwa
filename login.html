@@ -176,6 +176,7 @@ body{
           <div class="srv-row">
             <input type="text" id="serverInput" placeholder="http://192.168.1.100:8090">
             <button type="button" class="btn-mini" id="saveServerBtn">保存并检测</button>
+            <button type="button" class="btn-mini" id="autoSearchBtn" style="margin-left:6px">自动搜索管理端</button>
           </div>
         </div>
         <p class="net-msg" id="netMsg"></p>
@@ -363,6 +364,70 @@ body{
       msg.textContent = '无法连接：' + detail + '。请确认管理端EXE已运行、防火墙已放行8090端口';
       msg.className = 'net-msg err';
     }
+  });
+
+  /* 自动搜索管理端：并发扫描局域网常见网段的 8090 端口，找到后自动保存并连接 */
+  document.getElementById('autoSearchBtn').addEventListener('click', async function () {
+    const btn = document.getElementById('autoSearchBtn');
+    const orig = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '正在搜索管理端…（约 15 秒）';
+    const msg = document.getElementById('netMsg');
+    const scanSubnet = function (net, port) {
+      return new Promise(function (resolve) {
+        let next = 1;
+        const found = [];
+        const worker = function () {
+          return new Promise(function (res) {
+            (function step() {
+              if (next > 254) { res(); return; }
+              const i = next++;
+              const base = 'http://' + net + '.' + i + ':' + port;
+              const ctrl = new AbortController();
+              const t = setTimeout(function () { ctrl.abort(); }, 900);
+              fetch(base + '/api/ping', { signal: ctrl.signal }).then(function (r) {
+                clearTimeout(t);
+                if (r.ok) { found.push(base); }
+              }).catch(function () { clearTimeout(t); }).then(step);
+            })();
+          });
+        };
+        const workers = [];
+        for (let w = 0; w < 40; w++) workers.push(worker());
+        Promise.all(workers).then(function () { resolve(found); });
+      });
+    };
+    let found = [];
+    for (const net of ['192.168.0', '192.168.1']) {
+      const hits = await scanSubnet(net, 8090);
+      if (hits.length) { found = found.concat(hits); break; }
+    }
+    if (!found.length) {
+      btn.disabled = false; btn.textContent = orig;
+      msg.textContent = '未搜索到管理端：请确认电脑已开机、管理端EXE正在运行、且手机与电脑连接同一路由器';
+      msg.className = 'net-msg err';
+      return;
+    }
+    const base = found[0];
+    localStorage.setItem('checkin_server', base);
+    const input = document.getElementById('serverInput');
+    if (input) input.value = base;
+    msg.textContent = '已找到管理端 ' + base + (found.length > 1 ? '（另发现 ' + found.slice(1).join('、') + '）' : '') + '，正在检测…';
+    msg.className = 'net-msg ok';
+    try {
+      const r = await fetch(base + '/api/ping', { method: 'GET' });
+      const d = await r.json();
+      if (r.ok && d && d.ok) {
+        msg.textContent = '连接成功：' + base + '（可直接登录打卡）';
+      } else {
+        msg.textContent = '已保存地址，但服务状态异常，请确认是管理端EXE';
+        msg.className = 'net-msg err';
+      }
+    } catch (e) {
+      msg.textContent = '地址已保存，连接暂未成功，请稍后重试';
+      msg.className = 'net-msg err';
+    }
+    btn.disabled = false; btn.textContent = orig;
   });
 
   /* ---------- 登录逻辑（服务端优先，离线本地兜底） ---------- */
