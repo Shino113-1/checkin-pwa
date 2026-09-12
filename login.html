@@ -6,7 +6,7 @@
 <title>电子点名管理系统 - 登录</title>
 <meta name="theme-color" content="#0d2b52">
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
 <script src="config.js"></script>
 <script>
   /* 仅在 Cordova APP 环境（https://localhost）加载 cordova.js，
@@ -32,6 +32,7 @@
       navigator.serviceWorker.addEventListener('controllerchange', function () {
         if (refreshing) return;
         refreshing = true;
+        try { if (window.alert) window.alert('检测到新版本(v10)，正在刷新…'); } catch (e) {}
         window.location.reload();
       });
     });
@@ -447,5 +448,6 @@ body{
   });
 })();
 </script>
+<div id="appVer" style="position:fixed;right:10px;bottom:6px;z-index:9999;color:rgba(255,255,255,.45);font-size:11px;pointer-events:none;">v10</div>
 </body>
 </html>
