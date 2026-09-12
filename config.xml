@@ -10,7 +10,7 @@
     cordova-plugin-barcodescanner  扫码连接（兼容 iOS/Android；原 qrscanner 在 iOS 新 SDK 编译失败已替换）
   离线本地存储：WebView 内置 localStorage（离线打卡队列 / 去重集合）
   局域网通信：fetch 管理端 http://IP:8090（需允许明文流量，见 android-usesCleartextTraffic） -->
-<widget id="com.checkin.user" version="6.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0" xmlns:android="http://schemas.android.com/apk/res/android">
+<widget id="com.checkin.user" version="6.1.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0" xmlns:android="http://schemas.android.com/apk/res/android">
 
   <name>电子点名</name>
   <description>电子点名管理系统用户端：扫码连接 + 离线打卡（定位照片）+ 自动同步</description>
@@ -104,7 +104,7 @@
 
     <!-- iOS 图标（基于系统徽章生成，1024 主图标 + 各尺寸；App Store/TestFlight 需 1024 无透明通道） -->
     <icon src="www/icon-1024.png" width="1024" height="1024" />
-    <icon src="www/icon-1024.png" width="180" height="180" />
+    <icon src="www/icon-180.png" width="180" height="180" />
     <icon src="www/icon-1024.png" width="167" height="167" />
     <icon src="www/icon-1024.png" width="152" height="152" />
     <icon src="www/icon-1024.png" width="120" height="120" />

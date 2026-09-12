@@ -1,7 +1,7 @@
 {
   "name": "checkin-user-apk",
   "displayName": "电子点名",
-  "version": "6.0.0",
+  "version": "6.1.0",
   "description": "电子点名管理系统用户端 APK（Cordova）：扫码连接 + 离线打卡 + 自动同步",
   "author": "打卡系统",
   "license": "ISC",
